@@ -1,0 +1,841 @@
+/* ============================================================
+   Learning Assistant Chrome Extension - Design System
+   All classes prefixed with la-
+   ============================================================ */
+
+/* --- Reset & Base --- */
+.la-container,
+.la-container * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* --- Floating Panel Container --- */
+.la-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 400px;
+    height: 700px;
+    z-index: 10000;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(79, 107, 237, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    color: #1e293b;
+    line-height: 1.5;
+    resize: both;
+    min-width: 340px;
+    min-height: 500px;
+    transition: box-shadow 0.2s ease;
+}
+
+.la-container:hover {
+    box-shadow: 0 12px 48px rgba(79, 107, 237, 0.2), 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Header --- */
+.la-header {
+    background: linear-gradient(135deg, #4F6BED 0%, #7C3AED 100%);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: move;
+    user-select: none;
+    flex-shrink: 0;
+    border-radius: 16px 16px 0 0;
+    transition: border-radius 0.2s ease;
+}
+
+.la-container.la-minimized .la-header {
+    border-radius: 16px;
+}
+
+.la-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.la-header-dot {
+    font-size: 18px;
+    color: #fff;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+.la-header-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.5px;
+}
+
+.la-header-version {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.15);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.la-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.la-header-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 0.15s ease;
+}
+
+.la-header-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* --- Panel Body --- */
+.la-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    transition: opacity 0.2s ease, max-height 0.2s ease;
+}
+
+.la-container.la-minimized .la-body {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* --- Status Bar --- */
+.la-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+    flex-shrink: 0;
+}
+
+.la-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #CBD5E1;
+    flex-shrink: 0;
+}
+
+.la-status-dot.la-connected {
+    background: #10B981;
+    animation: la-pulse 2s ease-in-out infinite;
+}
+
+.la-status-dot.la-connecting {
+    background: #F59E0B;
+    animation: la-pulse 1s ease-in-out infinite;
+}
+
+.la-status-dot.la-disconnected {
+    background: #EF4444;
+}
+
+.la-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+@keyframes la-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+.la-status-text {
+    font-size: 12px;
+    color: #64748B;
+}
+
+.la-status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.la-model-info {
+    font-size: 11px;
+    color: #94A3B8;
+    background: #F1F5F9;
+    padding: 2px 8px;
+    border-radius: 6px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.la-lang-select {
+    font-size: 11px;
+    color: #64748B;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 2px 6px;
+    cursor: pointer;
+    outline: none;
+}
+
+/* --- Tab Bar --- */
+.la-tabs {
+    display: flex;
+    border-bottom: 2px solid #E2E8F0;
+    padding: 0 16px;
+    flex-shrink: 0;
+}
+
+.la-tab {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #94A3B8;
+    cursor: pointer;
+    border: none;
+    background: none;
+    position: relative;
+    transition: color 0.15s ease;
+    white-space: nowrap;
+}
+
+.la-tab:hover {
+    color: #64748B;
+}
+
+.la-tab.la-tab-active {
+    color: #4F6BED;
+    border-bottom: 2px solid #4F6BED;
+    margin-bottom: -2px;
+    font-weight: 600;
+}
+
+/* --- Tab Content --- */
+.la-tab-content {
+    flex: none;
+    overflow: visible;
+    padding: 14px 16px;
+    display: none;
+}
+
+.la-tab-content.la-tab-visible {
+    display: block;
+}
+
+/* --- Buttons --- */
+.la-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.la-btn:active {
+    transform: scale(0.97);
+}
+
+.la-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.la-btn-primary {
+    background: #4F6BED;
+    color: #fff;
+}
+
+.la-btn-primary:hover:not(:disabled) {
+    background: #3B5BDB;
+    box-shadow: 0 4px 12px rgba(79, 107, 237, 0.3);
+}
+
+.la-btn-success {
+    background: #10B981;
+    color: #fff;
+}
+
+.la-btn-success:hover:not(:disabled) {
+    background: #059669;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.la-btn-warning {
+    background: #F59E0B;
+    color: #fff;
+}
+
+.la-btn-warning:hover:not(:disabled) {
+    background: #D97706;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.la-btn-ghost {
+    background: transparent;
+    border: 1.5px solid #E2E8F0;
+    color: #64748B;
+}
+
+.la-btn-ghost:hover:not(:disabled) {
+    border-color: #CBD5E1;
+    background: #F8FAFC;
+}
+
+.la-btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 8px;
+}
+
+.la-btn-block,
+.la-btn-full {
+    width: 100%;
+}
+
+.la-btn-half {
+    flex: 1;
+}
+
+.la-btn-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.la-btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+/* --- Hotkey Badge --- */
+.la-hotkey {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+    letter-spacing: 0.5px;
+}
+
+.la-btn-ghost .la-hotkey {
+    color: #94A3B8;
+    background: #F1F5F9;
+}
+
+/* --- Labels --- */
+.la-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748B;
+    margin-bottom: 4px;
+}
+
+/* --- Section Titles --- */
+.la-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748B;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.la-section {
+    margin-bottom: 16px;
+}
+
+/* --- Textarea --- */
+.la-textarea {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 10px;
+    width: 100%;
+    min-height: 80px;
+    font-size: 12px;
+    color: #1e293b;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.15s ease;
+    line-height: 1.6;
+}
+
+.la-textarea:focus {
+    border-color: #4F6BED;
+    box-shadow: 0 0 0 3px rgba(79, 107, 237, 0.1);
+}
+
+.la-textarea::placeholder {
+    color: #94A3B8;
+}
+
+/* --- Code Preview Area --- */
+.la-code-preview {
+    background: #1E293B;
+    border-radius: 10px;
+    padding: 12px;
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: "Fira Code", "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #E2E8F0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin-top: 8px;
+}
+
+.la-code-text {
+    font-family: "Fira Code", "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+.la-code-preview::-webkit-scrollbar {
+    width: 6px;
+}
+
+.la-code-preview::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.la-code-preview::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+
+/* --- Resizable Area --- */
+.la-resizable-area {
+    flex: none;
+    min-height: 80px;
+    overflow: visible;
+    padding: 14px 16px;
+}
+
+.la-resize-handle {
+    height: 6px;
+    background: #E2E8F0;
+    cursor: row-resize;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+    position: relative;
+}
+
+.la-resize-handle:hover {
+    background: #4F6BED;
+}
+
+.la-resize-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 30px;
+    height: 3px;
+    background: #94A3B8;
+    border-radius: 2px;
+}
+
+.la-resize-handle:hover::after {
+    background: #fff;
+}
+
+/* --- Code Result Area --- */
+.la-code-result {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.la-code-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.la-code-result-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748B;
+}
+
+.la-code-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+/* --- Log Panel --- */
+.la-log-section {
+    border-top: 1px solid #E2E8F0;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.la-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #F8FAFC;
+    border-bottom: 1px solid #E2E8F0;
+}
+
+.la-log-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.la-btn-clear-log {
+    font-size: 11px;
+    color: #94A3B8;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.la-btn-clear-log:hover {
+    color: #64748B;
+    background: #E2E8F0;
+}
+
+.la-log-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+    min-height: 0;
+}
+
+.la-log-entry {
+    display: flex;
+    align-items: flex-start;
+    padding: 4px 16px;
+    font-size: 11px;
+    color: #64748B;
+    line-height: 1.5;
+    gap: 8px;
+}
+
+.la-log-entry.la-log-info .la-log-bar,
+.la-log-entry.la-log-info { border-left: 3px solid #4F6BED; }
+.la-log-entry.la-log-send .la-log-bar,
+.la-log-entry.la-log-send { border-left: 3px solid #6366F1; }
+.la-log-entry.la-log-success .la-log-bar,
+.la-log-entry.la-log-success { border-left: 3px solid #10B981; }
+.la-log-entry.la-log-receive .la-log-bar,
+.la-log-entry.la-log-receive { border-left: 3px solid #10B981; }
+.la-log-entry.la-log-error .la-log-bar,
+.la-log-entry.la-log-error { border-left: 3px solid #EF4444; }
+.la-log-entry.la-log-warning .la-log-bar,
+.la-log-entry.la-log-warning { border-left: 3px solid #F59E0B; }
+
+.la-log-time {
+    color: #94A3B8;
+    flex-shrink: 0;
+    font-family: "Fira Code", Consolas, monospace;
+    font-size: 10px;
+}
+
+.la-log-msg {
+    flex: 1;
+    word-break: break-word;
+}
+
+.la-log-area::-webkit-scrollbar,
+.la-tab-content::-webkit-scrollbar {
+    width: 5px;
+}
+
+.la-log-area::-webkit-scrollbar-track,
+.la-tab-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.la-log-area::-webkit-scrollbar-thumb,
+.la-tab-content::-webkit-scrollbar-thumb {
+    background: #CBD5E1;
+    border-radius: 3px;
+}
+
+/* --- Top Progress Overlay Bar --- */
+.la-top-tip-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10001;
+    display: none;
+    background: linear-gradient(135deg, #4F6BED 0%, #7C3AED 100%);
+    padding: 8px 20px;
+    box-shadow: 0 4px 16px rgba(79, 107, 237, 0.3);
+}
+
+.la-top-tip-overlay.la-visible {
+    display: flex;
+    align-items: center;
+}
+
+.la-top-tip-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.la-top-tip-icon {
+    font-size: 16px;
+    animation: la-pulse 1.5s ease-in-out infinite;
+}
+
+.la-top-tip-text {
+    flex-shrink: 0;
+}
+
+.la-top-tip-progress {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.la-top-tip-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: #fff;
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.la-top-tip-percent {
+    flex-shrink: 0;
+    font-weight: 700;
+    min-width: 36px;
+    text-align: right;
+}
+
+.la-top-tip-hint {
+    font-size: 11px;
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+
+.la-top-tip-cancel {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s ease;
+    pointer-events: auto;
+}
+
+.la-top-tip-cancel:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* --- Progress Inline Bar --- */
+.la-progress-inline {
+    width: 100%;
+    height: 6px;
+    background: #E2E8F0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.la-progress-inline-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #4F6BED, #7C3AED);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+/* --- Empty State --- */
+.la-empty {
+    text-align: center;
+    padding: 20px;
+    color: #94A3B8;
+    font-size: 12px;
+}
+
+/* --- Spinner --- */
+.la-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: la-spin 0.6s linear infinite;
+}
+
+.la-spinner-dark {
+    border-color: rgba(79, 107, 237, 0.2);
+    border-top-color: #4F6BED;
+}
+
+@keyframes la-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* --- Toast Notification --- */
+.la-toast {
+    position: fixed;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: #1E293B;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    z-index: 10002;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.la-toast.la-show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* --- Responsive for Minimized --- */
+.la-container.la-minimized {
+    height: 56px;
+    min-height: 56px;
+}
+
+/* --- Drag Feedback --- */
+.la-container.la-dragging {
+    opacity: 0.9;
+    transition: none;
+}
+
+/* --- Utility --- */
+.la-hidden { display: none !important; }
+.la-mt-8 { margin-top: 8px; }
+.la-mt-12 { margin-top: 12px; }
+.la-mb-8 { margin-bottom: 8px; }
+.la-text-center { text-align: center; }
+.la-text-sm { font-size: 12px; }
+.la-text-muted { color: #94A3B8; }
+
+/* --- 代码选中样式 --- */
+.la-code-preview::selection {
+    background: rgba(79, 107, 237, 0.4);
+    color: #fff;
+}
+
+.la-code-preview::-moz-selection {
+    background: rgba(79, 107, 237, 0.4);
+    color: #fff;
+}
+
+.la-code-preview::-webkit-selection {
+    background: rgba(79, 107, 237, 0.4);
+    color: #fff;
+}
+
+/* --- 日志区域选中样式 --- */
+.la-log-area::selection {
+    background: rgba(79, 107, 237, 0.4);
+    color: #fff;
+}
+
+.la-log-area::-moz-selection {
+    background: rgba(79, 107, 237, 0.4);
+    color: #fff;
+}
+
+/* --- 输入框选中样式 --- */
+.la-textarea::selection {
+    background: rgba(79, 107, 237, 0.3);
+    color: #1E293B;
+}
+
+.la-textarea::-moz-selection {
+    background: rgba(79, 107, 237, 0.3);
+    color: #1E293B;
+}
+
+/* --- 一键获取并粘贴按钮 --- */
+.la-btn-auto {
+    background: linear-gradient(135deg, #8B5CF6, #6366F1);
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+    flex: 1;
+}
+
+.la-btn-auto:hover {
+    background: linear-gradient(135deg, #7C3AED, #4F46E5);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}

@@ -1,0 +1,48 @@
+{
+    "manifest_version": 3,
+    "name": "学习助手",
+    "version": "1.0",
+    "description": "在线编程学习平台自动答题助手",
+    "icons": { "128": "icons/icon.png" },
+    "action": {
+        "default_title": "学习助手",
+        "default_icon": "icons/icon.png"
+    },
+    "permissions": ["activeTab", "storage", "scripting", "alarms"],
+    "host_permissions": [
+        "http://localhost/*",
+        "https://www.educoder.net/tasks/*",
+        "https://www.educoder.net/shixuns/*",
+        "https://www.educoder.net/classrooms/*",
+        "https://yhsun.cn/oj/*",
+        "https://ocr.yhsun.cn/*",
+        "https://leetcode.cn/problems/*",
+        "https://www.nowcoder.com/practice/*"
+    ],
+    "background": { "service_worker": "background.js" },
+    "content_scripts": [{
+        "matches": [
+            "https://www.educoder.net/tasks/*",
+            "https://www.educoder.net/shixuns/*",
+            "https://www.educoder.net/classrooms/*",
+            "https://yhsun.cn/oj/*",
+            "https://leetcode.cn/problems/*",
+            "https://www.nowcoder.com/practice/*"
+        ],
+        "js": ["content.js"],
+        "css": ["content.css"],
+        "run_at": "document_end"
+    }],
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "web_accessible_resources": [{
+        "resources": ["content.css"],
+        "matches": [
+            "https://www.educoder.net/*",
+            "https://yhsun.cn/*",
+            "https://leetcode.cn/*",
+            "https://www.nowcoder.com/*"
+        ]
+    }]
+}

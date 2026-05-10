@@ -1,0 +1,31 @@
+[project]
+name = "learningassistant"
+version = "1.0.0"
+description = "学习助手 - AI 驱动的编程学习辅助工具"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "websockets>=12.0",
+    "openai>=1.0",
+    "pyautogui>=0.9.54",
+    "keyboard>=0.13.5",
+    "pyperclip>=1.8.2",
+    "psutil>=5.9",
+    "requests>=2.31",
+    "pillow>=10.0",
+    "pystray>=0.19",
+    "customtkinter>=5.2.0",
+    "python-dotenv>=1.0",
+    "selenium>=4.6.0",
+]
+
+[project.scripts]
+learning-assistant = "main:main"
+
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[tool.uv]
+link-mode = "hardlink"
