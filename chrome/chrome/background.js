@@ -7,7 +7,7 @@ async function syncServerConfig() {
             const data = await resp.json();
             if (data.ws_url) {
                 cachedConfig = data;
-                chrome.storage.local.set({ serverUrl: data.ws_url });
+                chrome.storage.local.set({ serverUrl: data.ws_url, ocrApiUrl: data.ocr_api_url || 'https://ocr.yhsun.cn/' });
                 return;
             }
         }
@@ -21,7 +21,7 @@ chrome.runtime.onInstalled.addListener(() => {
     syncServerConfig();
     chrome.storage.local.get(['serverUrl'], (result) => {
         if (!result.serverUrl) {
-            chrome.storage.local.set({ serverUrl: 'ws://localhost:8000' });
+            chrome.storage.local.set({ serverUrl: 'ws://localhost:8000', ocrApiUrl: 'https://ocr.yhsun.cn/' });
         }
     });
 });
@@ -51,12 +51,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         return true; // 异步响应
     }
+    if (msg.action === 'getOcrApiUrl') {
+        if (cachedConfig && cachedConfig.ocr_api_url) {
+            sendResponse({ ocrApiUrl: cachedConfig.ocr_api_url });
+        } else {
+            chrome.storage.local.get(['ocrApiUrl'], (result) => {
+                sendResponse({ ocrApiUrl: result.ocrApiUrl || 'https://ocr.yhsun.cn/' });
+            });
+        }
+        return true;
+    }
     if (msg.action === 'syncConfig') {
         syncServerConfig().then(() => {
             if (cachedConfig && cachedConfig.ws_url) {
-                sendResponse({ serverUrl: cachedConfig.ws_url });
+                sendResponse({ serverUrl: cachedConfig.ws_url, ocrApiUrl: cachedConfig.ocr_api_url });
             } else {
-                sendResponse({ serverUrl: null });
+                sendResponse({ serverUrl: null, ocrApiUrl: null });
             }
         });
         return true;

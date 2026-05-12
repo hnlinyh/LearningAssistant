@@ -337,8 +337,13 @@ class MainWindow(ctk.CTk):
         try:
             from path_config import CHROME_EXTENSION_PATH
             config_path = os.path.join(CHROME_EXTENSION_PATH, 'server-config.json')
+            ocr_api_url = 'https://ocr.yhsun.cn/'
             with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump({"ws_port": ws_port, "ws_url": f"ws://{host}:{ws_port}"}, f)
+                json.dump({
+                    "ws_port": ws_port,
+                    "ws_url": f"ws://{host}:{ws_port}",
+                    "ocr_api_url": ocr_api_url
+                }, f)
         except Exception as e:
             self.log_message(f"写入扩展配置失败: {e}")
         self.server_label.configure(text=f"服务器运行中  {host}:{ws_port}")

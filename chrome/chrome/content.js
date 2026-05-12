@@ -14,6 +14,7 @@ class LearningAssistant {
         this.serverProgress = 0;
         this.virtualProgressTimer = null;
         this.serverUrl = 'ws://localhost:8000';
+        this.ocrApiUrl = 'https://ocr.yhsun.cn/';
         this.retryCount = 0;
         this.maxRetries = 3;
         this.currentTab = 'auto';
@@ -41,6 +42,9 @@ class LearningAssistant {
             });
             if (resp && resp.serverUrl) {
                 this.serverUrl = resp.serverUrl;
+                if (resp.ocrApiUrl) {
+                    this.ocrApiUrl = resp.ocrApiUrl;
+                }
                 return;
             }
         } catch (e) {
@@ -49,9 +53,12 @@ class LearningAssistant {
 
         // 回退：从 storage 读取
         return new Promise((resolve) => {
-            chrome.storage.local.get(['serverUrl'], (result) => {
+            chrome.storage.local.get(['serverUrl', 'ocrApiUrl'], (result) => {
                 if (result.serverUrl) {
                     this.serverUrl = result.serverUrl;
+                }
+                if (result.ocrApiUrl) {
+                    this.ocrApiUrl = result.ocrApiUrl;
                 }
                 resolve();
             });
@@ -666,7 +673,7 @@ class LearningAssistant {
 
     async ocrImageByApi(imageUrl) {
         try {
-            const resp = await fetch('https://ocr.yhsun.cn/', {
+            const resp = await fetch(this.ocrApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: imageUrl }),
