@@ -18,11 +18,22 @@ logging.basicConfig(
 )
 
 def ensure_env():
-    """Copy .env.example to .env if .env doesn't exist"""
+    """直接创建 .env 文件，包含默认配置"""
     env_path = os.path.join(PROJECT_ROOT, '.env')
-    env_example = os.path.join(PROJECT_ROOT, '.env.example')
-    if not os.path.exists(env_path) and os.path.exists(env_example):
-        shutil.copy2(env_example, env_path)
+    if not os.path.exists(env_path):
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.write("""# AI 模型配置
+OPENAI_API_KEY=
+OPENAI_BASE_URL=
+OPENAI_MODEL=
+
+# 服务器配置
+WS_HOST=localhost
+WS_PORT=8001
+
+# OCR 服务配置
+OCR_API_URL=https://ocr.yhsun.cn/
+""")
 
 def main():
     ensure_env()
