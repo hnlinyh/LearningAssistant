@@ -27,9 +27,9 @@ class LearningAssistant:
         self.current_language = 'python'
         self.last_question = ''
         self.last_code = ''
-        self.retry_count = 0
-        self.max_retries = 3
         self.progress = 0
+        self.connected_clients = set()
+        self.current_websocket = None
 
     def _init_client(self):
         api_key = self.model_info.get('api_key', self.api_key)
@@ -47,7 +47,6 @@ class LearningAssistant:
     def reset(self):
         self.last_question = ''
         self.last_code = ''
-        self.retry_count = 0
         self.progress = 0
 
     def update_model(self, model_info):
@@ -58,38 +57,51 @@ class LearningAssistant:
         self._init_client()
 
     async def server(self, websocket):
-        # 连接成功时发送配置信息
-        await websocket.send(json.dumps({
-            "type": "config_info",
-            "model": self.model_name
-        }, ensure_ascii=False))
+        # 跟踪连接
+        self.connected_clients.add(websocket)
+        self.current_websocket = websocket
+        try:
+            # 连接成功时发送配置信息
+            await websocket.send(json.dumps({
+                "type": "config_info",
+                "model": self.model_name
+            }, ensure_ascii=False))
 
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                msg_type = data.get('type', '')
-                if msg_type in ('content_auto_input', 'manual_question'):
-                    await self.handle_content_auto_input(websocket, data)
-                elif msg_type == 'test_results':
-                    await self.handle_test_results(websocket, data)
-                elif msg_type == 'ready_for_input':
-                    await self.handle_ready_for_input(websocket, data)
-                elif msg_type == 'direct_input_complete':
-                    await self.handle_direct_input_complete(websocket, data)
-                elif msg_type == 'progress_request':
-                    await self.send_progress_update(websocket)
-                elif msg_type == 'set_language':
-                    lang = data.get('language', 'python')
-                    self.set_language(lang)
-                elif msg_type == 'sync_code':
-                    await self.handle_sync_code(websocket, data)
-                elif msg_type == 'simulate_input':
-                    await self.handle_simulate_input(websocket, data)
-            except json.JSONDecodeError:
-                await websocket.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
-            except Exception as e:
-                logger.error(f"Message handling error: {e}")
-                await websocket.send(json.dumps({"type": "error", "message": str(e)}))
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    msg_type = data.get('type', '')
+                    if msg_type in ('content_auto_input', 'manual_question'):
+                        await self.handle_content_auto_input(websocket, data)
+                    elif msg_type == 'test_results':
+                        await self.handle_test_results(websocket, data)
+                    elif msg_type == 'ready_for_input':
+                        await self.handle_ready_for_input(websocket, data)
+                    elif msg_type == 'direct_input_complete':
+                        await self.handle_direct_input_complete(websocket, data)
+                    elif msg_type == 'progress_request':
+                        await self.send_progress_update(websocket)
+                    elif msg_type == 'set_language':
+                        lang = data.get('language', 'python')
+                        self.set_language(lang)
+                    elif msg_type == 'sync_code':
+                        await self.handle_sync_code(websocket, data)
+                    elif msg_type == 'simulate_input':
+                        await self.handle_simulate_input(websocket, data)
+                    elif msg_type == 'cancel_request':
+                        await self.handle_cancel_input(websocket, data)
+                    elif msg_type == 'sync_input_config':
+                        await self.handle_sync_input_config(websocket, data)
+                except json.JSONDecodeError:
+                    await websocket.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
+                except Exception as e:
+                    logger.error(f"Message handling error: {e}")
+                    await websocket.send(json.dumps({"type": "error", "message": str(e)}))
+        finally:
+            # 移除连接
+            self.connected_clients.discard(websocket)
+            if self.current_websocket == websocket:
+                self.current_websocket = None
 
     async def handle_sync_code(self, websocket, data):
         """接收扩展端同步的代码，显示在桌面端编辑器"""
@@ -111,6 +123,11 @@ class LearningAssistant:
             }))
             return
 
+        # 从消息中读取配置参数
+        interval = data.get('interval', 0.05)
+        special_char = data.get('special_char', True)
+        wait_time = data.get('wait_time', 0)
+
         await websocket.send(json.dumps({
             "type": "server_ack", "message": "开始模拟输入..."
         }))
@@ -118,9 +135,23 @@ class LearningAssistant:
         # 在后台线程执行输入
         def do_input():
             try:
+                # 等待时间
+                if wait_time > 0:
+                    for i in range(int(wait_time), 0, -1):
+                        asyncio.run(websocket.send(json.dumps({
+                            "type": "input_progress", "message": f"倒计时: {i}..."
+                        })))
+                        time.sleep(1)
+
+                # 特殊字符处理
+                if special_char:
+                    code_text = code.replace('\\n', '\n').replace('\\t', '\t')
+                else:
+                    code_text = code
+
                 self.input_simulator.reset()
                 self.input_simulator.typing_active = True
-                lines = code.split('\n')
+                lines = code_text.split('\n')
                 total = len(lines)
                 for i, line in enumerate(lines):
                     if not self.input_simulator.typing_active:
@@ -133,7 +164,7 @@ class LearningAssistant:
                     asyncio.run(websocket.send(json.dumps({
                         "type": "progress_update", "progress": progress
                     })))
-                    time.sleep(0.05)
+                    time.sleep(interval)
 
                 success = self.input_simulator.typing_active
                 asyncio.run(websocket.send(json.dumps({
@@ -148,6 +179,37 @@ class LearningAssistant:
         import threading
         threading.Thread(target=do_input, daemon=True).start()
 
+    async def handle_cancel_input(self, websocket, data):
+        """处理取消输入请求"""
+        self.input_simulator.typing_active = False
+        await websocket.send(json.dumps({
+            "type": "cancel_input_ack"
+        }))
+        if self.gui:
+            self.gui.log_message("输入已取消")
+
+    async def handle_sync_input_config(self, websocket, data):
+        """处理配置同步请求，广播到所有连接的客户端"""
+        config = data.get('config', {})
+        await self.broadcast_to_clients({
+            "type": "sync_input_config",
+            "config": config
+        })
+
+    async def broadcast_to_clients(self, message):
+        """向所有连接的客户端广播消息"""
+        if not self.connected_clients:
+            return
+        message_str = json.dumps(message, ensure_ascii=False)
+        disconnected = set()
+        for client in self.connected_clients:
+            try:
+                await client.send(message_str)
+            except Exception:
+                disconnected.add(client)
+        # 清理断开的连接
+        self.connected_clients -= disconnected
+
     async def handle_content_auto_input(self, websocket, data):
         question = data.get('question_content') or data.get('content') or data.get('problem_text', '')
         current_code = data.get('current_code') or data.get('existing_code') or data.get('editor_code', '')
@@ -158,7 +220,6 @@ class LearningAssistant:
             self.current_language = language.lower()
 
         self.last_question = question
-        self.retry_count = 0
 
         # 根据标志位决定是否同步题目到桌面端
         if self.gui and sync_question:
@@ -197,21 +258,13 @@ class LearningAssistant:
             test_results = data.get('results', {})
             test_text = test_results.get('text', '')
             current_code = data.get('current_code') or data.get('existing_code') or data.get('currentCode', '')
+            question = data.get('question_content') or data.get('content', '') or self.last_question
 
             has_error = any(kw in test_text.lower() for kw in ['[failed]', '错误', '失败', 'error', 'fail'])
 
             if has_error:
-                if self.retry_count >= self.max_retries:
-                    await websocket.send(json.dumps({
-                        "type": "test_results_response",
-                        "success": True,
-                        "has_failures": True,
-                        "message": f"已达到最大重试次数({self.max_retries}次)"
-                    }, ensure_ascii=False))
-                    return
-
-                self.retry_count += 1
-                revised_code = await self._generate_revised_code(self.last_question, test_text, current_code)
+                # 复用代码生成功能，传入测试失败信息
+                revised_code = await self.get_complete_code_solution(question, current_code, test_text)
 
                 if revised_code:
                     self.last_code = revised_code
@@ -220,8 +273,7 @@ class LearningAssistant:
                         self.gui.set_code(revised_code)
                     await websocket.send(json.dumps({
                         "type": "code_revision",
-                        "code": revised_code,
-                        "revision_number": self.retry_count
+                        "code": revised_code
                     }, ensure_ascii=False))
                 else:
                     await websocket.send(json.dumps({
@@ -263,34 +315,30 @@ class LearningAssistant:
             "stage": "generating"
         }))
 
-    def _get_system_prompt(self):
+    def _get_system_prompt(self, has_test_failure=False):
         lang_map = {
             'python': 'Python', 'javascript': 'JavaScript', 'java': 'Java',
             'cpp': 'C++', 'c': 'C', 'csharp': 'C#'
         }
         lang_name = lang_map.get(self.current_language, self.current_language.upper())
-        return f"""你是一个专业的编程助手，负责生成{lang_name}代码。
+
+        if has_test_failure:
+            return f"""你是一个专业的编程助手，负责根据测试失败信息修正{lang_name}代码。
 重要规则：
 1. 只返回纯代码，不要有任何解释、注释或额外文字
 2. 绝对不要使用任何代码块标记
-3. 代码必须完整且可运行
+3. 代码必须完整且可运行，包括导入的库和模块等
+4. 必须返回完整最终代码文件，不能只返回局部补丁
+5. 专注于修复已知的错误，确保代码通过所有测试"""
+        else:
+            return f"""你是一个专业的编程助手，负责生成{lang_name}代码。
+重要规则：
+1. 只返回纯代码，不要有任何解释、注释或额外文字
+2. 绝对不要使用任何代码块标记
+3. 代码必须完整且可运行，包括导入的库和模块等
 4. 如果用户提供了已有代码，已有代码是不可改动的既有内容，严格保留
 5. 如果用户提供了已有代码，只能在原有代码基础上补充缺失部分
 6. 必须返回完整最终代码文件"""
-
-    def _get_retry_system_prompt(self):
-        lang_map = {
-            'python': 'Python', 'javascript': 'JavaScript', 'java': 'Java',
-            'cpp': 'C++', 'c': 'C', 'csharp': 'C#'
-        }
-        lang_name = lang_map.get(self.current_language, self.current_language.upper())
-        return f"""你是一个专业的编程助手，负责根据测试失败信息修正{lang_name}代码。
-重要规则：
-1. 只返回纯代码，不要有任何解释、注释或额外文字
-2. 绝对不要使用任何代码块标记
-3. 代码必须完整且可运行
-4. 必须返回完整最终代码文件，不能只返回局部补丁
-5. 专注于修复已知的错误，确保代码通过所有测试。"""
 
     def clean_code_response(self, content):
         if not content:
@@ -308,19 +356,28 @@ class LearningAssistant:
             return False
         return True
 
-    async def get_complete_code_solution(self, question, existing_code=''):
+    async def get_complete_code_solution(self, question, existing_code='', test_failure=''):
         if not self.client:
             logger.error("代码生成失败: 客户端未初始化 (API Key 可能未设置)")
             return None
 
-        logger.info(f"开始生成代码: model={self.model_name}, 题目长度={len(question)}")
+        logger.info(f"开始生成代码: model={self.model_name}, 题目长度={len(question)}, 纠错模式={bool(test_failure)}")
         self.progress = 20
         prompt = f"题目要求：\n{question}\n"
+
         if existing_code:
-            prompt += f"\n编辑器中已有代码（不可修改，必须保留）：\n{existing_code}\n"
-            prompt += "\n请在已有代码基础上补充缺失部分，返回完整最终代码。"
+            prompt += f"\n编辑器中已有代码：\n{existing_code}\n"
+
+        if test_failure:
+            # 纠错场景：包含测试失败信息
+            prompt += f"\n测试失败信息：\n{test_failure}\n"
+            prompt += "\n请根据测试失败信息修复代码中的错误，返回完整修复后的代码。"
         else:
-            prompt += "\n请生成完整的代码解决方案。"
+            # 正常生成场景
+            if existing_code:
+                prompt += "\n请在已有代码基础上补充缺失部分，返回完整最终代码。"
+            else:
+                prompt += "\n请生成完整的代码解决方案。"
 
         self.progress = 40
         for attempt in range(2):
@@ -330,7 +387,7 @@ class LearningAssistant:
                 response = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=[
-                        {"role": "system", "content": self._get_system_prompt()},
+                        {"role": "system", "content": self._get_system_prompt(has_test_failure=bool(test_failure))},
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=8192,
@@ -367,55 +424,6 @@ class LearningAssistant:
                 logger.error(f"API 调用失败 (尝试 {attempt+1}): {type(e).__name__}: {e}")
 
         logger.error("代码生成失败: 所有尝试均失败")
-        self.progress = 100
-        return None
-
-    async def _generate_revised_code(self, question, test_text, previous_code):
-        if not self.client:
-            return None
-        self.progress = 10
-        prompt = f"""题目要求：
-{question}
-
-之前的代码：
-{previous_code}
-
-测试失败信息：
-{test_text}
-
-请根据以上信息，修复代码中的错误，生成新的完整代码。
-特别注意：
-1. 仔细分析测试失败的原因
-2. 修正之前代码中的错误
-3. 确保新代码能够通过所有测试用例
-4. 只返回纯代码，不要有任何解释
-5. 必须返回完整最终代码文件
-
-请生成修复后的完整代码："""
-
-        max_attempts = 2
-        for attempt in range(max_attempts):
-            try:
-                self.progress = 20 + attempt * 30
-                response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[
-                        {"role": "system", "content": self._get_retry_system_prompt()},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=8192,
-                    temperature=0.3 + attempt * 0.2,
-                    stream=False
-                )
-                if response.choices:
-                    code = self.clean_code_response(response.choices[0].message.content)
-                    # 纠错场景只检查代码非空和最小长度，不比较与原代码的长度
-                    if code and len(code.strip()) >= 20:
-                        self.progress = 100
-                        return code
-                    logger.warning(f"纠错代码完整性检查失败 (尝试 {attempt+1})")
-            except Exception as e:
-                logger.error(f"Code revision failed (尝试 {attempt+1}): {e}")
         self.progress = 100
         return None
 

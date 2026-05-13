@@ -47,8 +47,8 @@ main.py                          # 入口：初始化环境、启动主窗口
 | 运行配置 Tab 的 UI / 扩展安装按钮 | `gui/main_window.py` + `gui/extension_dialog.py` |
 | 服务器 Tab 的 UI / 启停服务器 | `gui/main_window.py` + `core/server.py` |
 | WebSocket 消息分发逻辑 | `core/server.py` 的 `_handler()` + `core/assistant.py` 的 `server()` |
-| AI 代码生成 Prompt / 重试逻辑 | `core/assistant.py` 的 `get_complete_code_solution()` / `_generate_revised_code()` |
-| AI Prompt 系统指令 | `core/assistant.py` 的 `_get_system_prompt()` / `_get_retry_system_prompt()` |
+| AI 代码生成 Prompt / 纠错逻辑 | `core/assistant.py` 的 `get_complete_code_solution()` |
+| AI Prompt 系统指令 | `core/assistant.py` 的 `_get_system_prompt()` |
 | 键盘模拟 / 粘贴逻辑 | `utils/input_simulator.py` |
 | 配置保存到 .env / 从 .env 加载 | `utils/config.py` |
 | 浏览器扩展自动加载 (Selenium) | `utils/extension_setup.py` 的 `launch_with_extension_selenium()` |
@@ -263,29 +263,33 @@ _is_complete_code(code, existing_code)
        ├─ 检查是否包含失败关键词：
        │    [failed], 错误, 失败, error, fail
        └─ 如果有失败：
-            ├─ 检查 retry_count >= max_retries（3次）
-            │    └─ 如果是：发送 test_results_response（达到最大重试次数）
-            └─ 如果未达上限：
-                 ├─ retry_count += 1
-                 └─ _generate_revised_code(question, test_text, current_code)
-                      ├─ 构建 prompt：
-                      │    ├─ 题目要求
-                      │    ├─ 之前的代码
-                      │    ├─ 测试失败信息
-                      │    └─ 修复指令
-                      ├─ 尝试 2 次 API 调用：
-                      │    ├─ temperature=0.3/0.5
-                      │    └─ 调用 client.chat.completions.create()
-                      │    └─ clean_code_response() 清理
-                      │    └─ _is_complete_code() 完整性检查
-                      └─ 返回修订代码 或 None
-                 └─ 如果修订成功：
-                      └─ 发送 code_revision 消息（code, revision_number）
-                 └─ 如果失败：
-                      └─ 发送 error 消息
+            └─ get_complete_code_solution(question, current_code, test_text)
+                 ├─ 构建 prompt（纠错模式）：
+                 │    ├─ 题目要求
+                 │    ├─ 已有代码
+                 │    ├─ 测试失败信息
+                 │    └─ 修复指令
+                 ├─ 调用 _get_system_prompt(has_test_failure=True)
+                 │    └─ 返回纠错专用系统提示词
+                 ├─ 尝试 2 次 API 调用：
+                 │    ├─ temperature=0.3/0
+                 │    └─ 调用 client.chat.completions.create()
+                 │    └─ clean_code_response() 清理
+                 │    └─ _is_complete_code() 完整性检查
+                 └─ 返回修订代码 或 None
+            └─ 如果修订成功：
+                 └─ 发送 code_revision 消息（code）
+            └─ 如果失败：
+                 └─ 发送 error 消息
        └─ 如果没有失败：
             └─ 发送 test_results_response（所有测试通过）
 ```
+
+**代码生成功能复用**：
+- `get_complete_code_solution()` 同时支持代码生成和纠错场景
+- 通过 `test_failure` 参数区分：为空时为正常生成，非空时为纠错模式
+- `_get_system_prompt()` 根据 `has_test_failure` 参数返回不同的系统提示词
+- 无重试计数限制，用户可多次触发纠错
 
 ---
 
@@ -819,8 +823,7 @@ UpdateWindow.__init__()
 | `handle_ready_for_input()` | 将代码粘贴到编辑器 |
 | `handle_sync_code()` | 接收扩展同步的代码，调用 `gui.set_code()` 显示到桌面端 |
 | `generate_code_for_gui()` | 供 GUI 直接调用的代码生成入口 |
-| `get_complete_code_solution()` | **AI 代码生成主函数**，调用 OpenAI API |
-| `_generate_revised_code()` | **AI 代码纠错函数**（含重试机制和完整性校验） |
+| `get_complete_code_solution()` | **AI 代码生成主函数**，同时支持代码生成和纠错场景 |
 
 **消息类型处理**（在 `server()` 方法中）：
 
@@ -912,7 +915,7 @@ UpdateWindow.__init__()
 |------|---------|---------|---------|
 | `content_auto_input` | 扩展自动提取题目 | `question_content`, `current_code`, `language` | `assistant.py: handle_content_auto_input()` |
 | `manual_question` | 用户手动触发 | 同上 | 同上 |
-| `test_results` | 页面测试完成 | `results.text`, `current_code` | `assistant.py: handle_test_results()` |
+| `test_results` | 页面测试完成 | `results`, `current_code`, `question_content` | `assistant.py: handle_test_results()` |
 | `ready_for_input` | 编辑器已就绪 | `code` | `assistant.py: handle_ready_for_input()` |
 | `direct_input_complete` | 扩展端写入完成 | `success` | `assistant.py: handle_direct_input_complete()` |
 | `progress_request` | 请求进度 | - | `assistant.py: send_progress_update()` |
@@ -925,7 +928,7 @@ UpdateWindow.__init__()
 |------|---------|---------|
 | `server_ack` | 开始处理 | `status`, `message` |
 | `code_solution` | 代码生成完成 | `code`, `language`, `model_used` |
-| `code_revision` | 纠错完成 | `code`, `revision_number` |
+| `code_revision` | 纠错完成 | `code` |
 | `input_complete` | 粘贴完成 | `success`, `method_used` |
 | `progress_update` | 进度更新 | `progress`, `stage` |
 | `sync_code_ack` | 代码同步确认 | `status` |
@@ -939,8 +942,8 @@ UpdateWindow.__init__()
 
 **文件**：`core/assistant.py`
 
-- `_get_system_prompt()`: 生成代码时的系统指令
-- `_get_retry_system_prompt()`: 纠错时的系统指令
+- `_get_system_prompt(has_test_failure=False)`: 生成代码时的系统指令，`has_test_failure=True` 时返回纠错专用提示词
+- `get_complete_code_solution(question, existing_code, test_failure)`: 代码生成主函数，`test_failure` 非空时为纠错模式
 
 ---
 

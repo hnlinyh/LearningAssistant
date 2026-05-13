@@ -15,10 +15,13 @@ class LearningAssistant {
         this.virtualProgressTimer = null;
         this.serverUrl = 'ws://localhost:8000';
         this.ocrApiUrl = 'https://ocr.yhsun.cn/';
-        this.retryCount = 0;
-        this.maxRetries = 3;
         this.currentTab = 'auto';
         this.manualDisconnect = false;
+        this.inputConfig = {
+            wait_time: 2,
+            interval: 0.05,
+            special_char: true
+        };
         this.init();
     }
 
@@ -45,20 +48,22 @@ class LearningAssistant {
                 if (resp.ocrApiUrl) {
                     this.ocrApiUrl = resp.ocrApiUrl;
                 }
-                return;
             }
         } catch (e) {
             // 消息发送失败，回退到 storage
         }
 
-        // 回退：从 storage 读取
+        // 从 storage 读取配置
         return new Promise((resolve) => {
-            chrome.storage.local.get(['serverUrl', 'ocrApiUrl'], (result) => {
+            chrome.storage.local.get(['serverUrl', 'ocrApiUrl', 'inputConfig'], (result) => {
                 if (result.serverUrl) {
                     this.serverUrl = result.serverUrl;
                 }
                 if (result.ocrApiUrl) {
                     this.ocrApiUrl = result.ocrApiUrl;
+                }
+                if (result.inputConfig) {
+                    this.inputConfig = result.inputConfig;
                 }
                 resolve();
             });
@@ -87,14 +92,14 @@ class LearningAssistant {
     }
 
     showTopTip(text) {
-        this.topTipText.textContent = text || '代码输入中';
-        this.topTipOverlay.classList.add('la-visible');
+        // 横幅已移除，改为日志显示
+        this.addLog(text || '处理中', 'info');
         this.shouldShowProgress = true;
         this.startVirtualProgress();
     }
 
     hideTopTip() {
-        this.topTipOverlay.classList.remove('la-visible');
+        // 横幅已移除
         this.shouldShowProgress = false;
         this.stopVirtualProgress();
         this.updateProgress(0);
@@ -474,14 +479,14 @@ class LearningAssistant {
                     this.handleCodeRevision(data);
                     break;
                 case 'input_progress':
-                    this.updateProgress(data.progress);
+                    this.addLog(data.message || `输入进度: ${data.progress}%`, 'info');
                     break;
                 case 'input_complete':
                     this.handleInputComplete(data);
                     break;
                 case 'progress_update':
                     this.serverProgress = data.progress;
-                    this.updateProgress(data.progress);
+                    this.addLog(`进度: ${data.progress}%`, 'info');
                     break;
                 case 'test_results_response':
                     this.handleTestResultsResponse(data);
@@ -490,6 +495,13 @@ class LearningAssistant {
                     if (data.model) {
                         this.modelInfo.textContent = '模型: ' + data.model;
                     }
+                    break;
+                case 'sync_input_config':
+                    this.handleInputConfigSync(data.config);
+                    break;
+                case 'cancel_input_ack':
+                    this.setInputInProgress(false);
+                    this.addLog('输入已取消', 'warning');
                     break;
                 case 'error':
                     this.addLog('错误: ' + data.message, 'error');
@@ -531,6 +543,12 @@ class LearningAssistant {
         }
         this.setInputInProgress(false);
         this.hideTopTip();
+    }
+
+    handleInputConfigSync(config) {
+        this.inputConfig = config;
+        chrome.storage.local.set({ inputConfig: config });
+        this.addLog('输入配置已同步: 间隔=' + config.interval + 's', 'success');
     }
 
     handleTestResultsResponse(data) {
@@ -577,7 +595,10 @@ class LearningAssistant {
             this.socket.send(JSON.stringify({
                 type: 'simulate_input',
                 code: code,
-                language: this.langSelect.value
+                language: this.langSelect.value,
+                wait_time: this.inputConfig.wait_time,
+                interval: this.inputConfig.interval,
+                special_char: this.inputConfig.special_char
             }));
             this.setInputInProgress(true);
             this.showTopTip('模拟键盘输入中');
@@ -1444,10 +1465,6 @@ class LearningAssistant {
             return;
         }
         if (this.isInputInProgress) return;
-        if (this.retryCount >= this.maxRetries) {
-            this.addLog('已达最大纠错次数 (' + this.maxRetries + '次)', 'warning');
-            return;
-        }
         this.setInputInProgress(true);
         this.addLog('正在提取测试结果...', 'info');
 
@@ -1465,9 +1482,8 @@ class LearningAssistant {
             return;
         }
 
-        this.retryCount++;
-        this.showTopTip('智能纠错中... (' + this.retryCount + '/' + this.maxRetries + ')');
-        this.addLog('检测到失败，开始第 ' + this.retryCount + ' 次纠错...', 'warning');
+        this.showTopTip('智能纠错中...');
+        this.addLog('检测到失败，开始纠错...', 'warning');
 
         const content = this.extractPageContent();
         const currentCode = this.extractCurrentEditorCode();

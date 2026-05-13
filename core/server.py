@@ -19,6 +19,7 @@ class ServerManager:
         self.host = host or os.getenv('WS_HOST', 'localhost')
         self.port = port or int(os.getenv('WS_PORT', '8000'))
         self.assistant = None
+        self._server_loop = None
 
     def start(self):
         if self.server_running:
@@ -39,6 +40,7 @@ class ServerManager:
     def _run_server(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        self._server_loop = loop
         loop.run_until_complete(self._start_websocket_server())
 
     async def _process_request(self, connection, request):
@@ -85,3 +87,16 @@ class ServerManager:
     def set_language(self, lang):
         if self.assistant:
             self.assistant.set_language(lang)
+
+    def broadcast_config(self, config):
+        """广播配置到所有连接的客户端"""
+        if self.assistant:
+            loop = self._server_loop
+            if loop:
+                asyncio.run_coroutine_threadsafe(
+                    self.assistant.broadcast_to_clients({
+                        "type": "sync_input_config",
+                        "config": config
+                    }),
+                    loop
+                )

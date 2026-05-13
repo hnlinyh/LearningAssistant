@@ -64,6 +64,11 @@ class InputTab(ctk.CTkFrame):
                       corner_radius=10, command=self._copy_code).pack(side='left', padx=(0, 8))
         ctk.CTkButton(btn_frame, text="模拟键盘输入", fg_color=TEXT_SECONDARY, hover_color='#475569',
                       corner_radius=10, command=self._input_test).pack(side='left', padx=(0, 8))
+        self.cancel_btn = ctk.CTkButton(btn_frame, text="取消输入", fg_color=WARNING, hover_color='#D97706',
+                                         corner_radius=10, command=self._cancel_input, state='disabled')
+        self.cancel_btn.pack(side='left', padx=(0, 8))
+        ctk.CTkButton(btn_frame, text="保存配置", fg_color=PRIMARY, hover_color=PRIMARY_DARK,
+                      corner_radius=10, command=self._save_config).pack(side='left', padx=(0, 8))
 
     # ========== 复制代码 ==========
 
@@ -88,6 +93,8 @@ class InputTab(ctk.CTkFrame):
             return
         wait_time, interval = params
         self.mw.log_message(f"输入测试将在 {int(wait_time)} 秒后开始，请切换到目标窗口...")
+        # 启用取消按钮
+        self.cancel_btn.configure(state='normal')
         threading.Thread(target=self._input_test_thread, args=(text, wait_time, interval), daemon=True).start()
 
     def _input_test_thread(self, text, wait_time, interval):
@@ -119,6 +126,32 @@ class InputTab(ctk.CTkFrame):
 
         if success:
             self.after(0, self.mw.log_message, "模拟键盘输入完成")
+        # 禁用取消按钮
+        self.after(0, lambda: self.cancel_btn.configure(state='disabled'))
+
+    # ========== 取消输入 ==========
+
+    def _cancel_input(self):
+        self.mw.input_simulator.typing_active = False
+        self.mw.log_message("输入已取消")
+        self.cancel_btn.configure(state='disabled')
+
+    # ========== 保存配置 ==========
+
+    def _save_config(self):
+        params = self._validate_test_params()
+        if params is None:
+            return
+        wait_time, interval = params
+        config = {
+            "wait_time": wait_time,
+            "interval": interval,
+            "special_char": self.input_special_char_var.get()
+        }
+        # 通过server_manager广播配置
+        if hasattr(self.mw, 'server_manager') and self.mw.server_manager:
+            self.mw.server_manager.broadcast_config(config)
+        self.mw.log_message("配置已保存并同步到扩展端")
 
     # ========== 参数验证 ==========
 

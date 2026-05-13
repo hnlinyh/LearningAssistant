@@ -31,8 +31,6 @@ OPENAI_MODEL=
 WS_HOST=localhost
 WS_PORT=8001
 
-# OCR 服务配置
-OCR_API_URL=https://ocr.yhsun.cn/
 """)
 
 def main():
