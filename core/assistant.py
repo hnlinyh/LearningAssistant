@@ -239,6 +239,7 @@ class LearningAssistant:
             # 同步生成的代码到桌面端
             if self.gui:
                 self.gui.set_code(code)
+                self.gui.log_message("代码生成完成，已同步到桌面端")
             await websocket.send(json.dumps({
                 "type": "code_solution",
                 "code": code,
@@ -247,6 +248,8 @@ class LearningAssistant:
             }, ensure_ascii=False))
         else:
             msg = "请先在桌面端配置 API Key" if not self.client else "AI 未能生成有效代码"
+            if self.gui:
+                self.gui.log_message(f"代码生成失败：{msg}")
             await websocket.send(json.dumps({
                 "type": "error",
                 "code": "ERR_AI_RESPONSE_INVALID",
@@ -263,6 +266,17 @@ class LearningAssistant:
             has_error = any(kw in test_text.lower() for kw in ['[failed]', '错误', '失败', 'error', 'fail'])
 
             if has_error:
+                # 开始纠错提示
+                if self.gui:
+                    self.gui.log_message("检测到测试失败，正在智能纠错...")
+
+                # 发送处理中状态
+                await websocket.send(json.dumps({
+                    "type": "server_ack",
+                    "status": "processing",
+                    "message": "正在纠错..."
+                }, ensure_ascii=False))
+
                 # 复用代码生成功能，传入测试失败信息
                 revised_code = await self.get_complete_code_solution(question, current_code, test_text)
 
@@ -271,17 +285,22 @@ class LearningAssistant:
                     # 同步纠错后的代码到桌面端
                     if self.gui:
                         self.gui.set_code(revised_code)
+                        self.gui.log_message("智能纠错完成，代码已同步到桌面端")
                     await websocket.send(json.dumps({
                         "type": "code_revision",
                         "code": revised_code
                     }, ensure_ascii=False))
                 else:
+                    if self.gui:
+                        self.gui.log_message("智能纠错失败，未能生成有效代码")
                     await websocket.send(json.dumps({
                         "type": "error",
                         "code": "ERR_AI_RESPONSE_INVALID",
                         "message": "纠错代码生成失败"
                     }))
             else:
+                if self.gui:
+                    self.gui.log_message("测试结果：所有测试通过")
                 await websocket.send(json.dumps({
                     "type": "test_results_response",
                     "success": True,

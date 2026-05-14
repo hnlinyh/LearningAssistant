@@ -64,12 +64,12 @@ class ExtensionInstallDialog(ctk.CTkToplevel):
         launch_frame.pack(fill='x', pady=(0, 12))
         ctk.CTkLabel(launch_frame, text="启动浏览器", font=("", 14, "bold"),
                      text_color=TEXT_PRIMARY).pack(anchor='w', padx=16, pady=(12, 4))
-        ctk.CTkLabel(launch_frame, text="直接启动浏览器并自动加载扩展（开发者模式）",
+        ctk.CTkLabel(launch_frame, text="Chrome 会启动 Chrome for Testing（开发专用），Edge 使用本机浏览器自动加载扩展",
                      text_color=TEXT_SECONDARY, font=("", 12), wraplength=520).pack(anchor='w', padx=16, pady=(0, 8))
 
         launch_btn_frame = ctk.CTkFrame(launch_frame, fg_color='transparent')
         launch_btn_frame.pack(fill='x', padx=16, pady=(0, 8))
-        ctk.CTkButton(launch_btn_frame, text="启动 Chrome", fg_color=SUCCESS, hover_color='#0D9668',
+        ctk.CTkButton(launch_btn_frame, text="启动 Chrome for Testing", fg_color=SUCCESS, hover_color='#0D9668',
                        corner_radius=8, height=34, font=("", 12, "bold"),
                        command=lambda: self._run_async(lambda: self._launch_browser('chrome'))).pack(side='left', expand=True, fill='x', padx=(0, 4))
         ctk.CTkButton(launch_btn_frame, text="启动 Edge", fg_color=SUCCESS, hover_color='#0D9668',
@@ -102,16 +102,14 @@ class ExtensionInstallDialog(ctk.CTkToplevel):
     def _open_chrome_ext(self):
         from utils.extension_setup import ExtensionSetup
         es = ExtensionSetup()
-        success = es.open_chrome_extensions()
-        msg = "已打开 Chrome 扩展管理页面" if success else "未找到 Chrome 浏览器"
+        success, msg = es.open_chrome_extensions()
         color = SUCCESS if success else '#EF4444'
         self.after(0, lambda: self.manual_status_label.configure(text=msg, text_color=color))
 
     def _open_edge_ext(self):
         from utils.extension_setup import ExtensionSetup
         es = ExtensionSetup()
-        success = es.open_edge_extensions()
-        msg = "已打开 Edge 扩展管理页面" if success else "未找到 Edge 浏览器"
+        success, msg = es.open_edge_extensions()
         color = SUCCESS if success else '#EF4444'
         self.after(0, lambda: self.manual_status_label.configure(text=msg, text_color=color))
 
@@ -125,6 +123,13 @@ class ExtensionInstallDialog(ctk.CTkToplevel):
     def _launch_browser(self, browser):
         from utils.extension_setup import ExtensionSetup
         es = ExtensionSetup()
-        success, msg = es.launch_with_extension(browser=browser)
+        self.after(0, lambda: self.launch_status_label.configure(text="正在准备启动浏览器...", text_color=TEXT_SECONDARY))
+        success, msg = es.launch_with_extension(
+            browser=browser,
+            progress_callback=lambda progress: self.after(
+                0,
+                lambda: self.launch_status_label.configure(text=progress, text_color=TEXT_SECONDARY),
+            ),
+        )
         color = SUCCESS if success else '#EF4444'
         self.after(0, lambda: self.launch_status_label.configure(text=msg, text_color=color))

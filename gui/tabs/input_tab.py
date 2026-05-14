@@ -26,6 +26,7 @@ class InputTab(ctk.CTkFrame):
             lang_frame, values=["Python", "JavaScript", "Java", "C++", "C", "C#"],
             fg_color=SURFACE, button_color=PRIMARY, button_hover_color=PRIMARY_DARK,
             dropdown_fg_color=SURFACE, dropdown_hover_color=PRIMARY_LIGHT,
+            text_color=TEXT_PRIMARY,
             variable=self.mw.selected_language)
         self.lang_menu.pack(side='left', padx=8)
 

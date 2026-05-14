@@ -1,6 +1,165 @@
 // Learning Assistant - Content Script
 // 在线编程学习平台自动答题助手
 
+const LA_EDITOR_MARK_ATTR = 'data-la-editor-id';
+const LA_IS_TOP_FRAME = window.top === window.self;
+const LA_FRAME_TRACKER_KEY = '__laFrameTrackerInstalled';
+const LA_PASTE_STATE = {
+    lastFocusedTarget: null,
+    lastContentEditableRange: null,
+    editorSequence: 0
+};
+
+function isLearningAssistantUiNode(node) {
+    return !!(node && node.closest && node.closest('.la-container, .la-top-tip-overlay'));
+}
+
+function isVisiblePasteTarget(element) {
+    if (!element || !element.isConnected) {
+        return false;
+    }
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+        return false;
+    }
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+}
+
+function isWritablePasteInput(element) {
+    if (!(element instanceof HTMLInputElement)) {
+        return false;
+    }
+    const type = (element.getAttribute('type') || 'text').toLowerCase();
+    return ['text', 'search', 'url', 'tel', 'password', 'email'].includes(type)
+        && !element.readOnly
+        && !element.disabled;
+}
+
+function isWritablePasteTextarea(element) {
+    return element instanceof HTMLTextAreaElement && !element.readOnly && !element.disabled;
+}
+
+function getContentEditableTarget(element) {
+    return element && element.closest ? element.closest('[contenteditable="true"]') : null;
+}
+
+function findPasteEditorTargetFromNode(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE || isLearningAssistantUiNode(node)) {
+        return null;
+    }
+
+    if (document.designMode && document.designMode.toLowerCase() === 'on' && document.body) {
+        return document.body;
+    }
+
+    const editor = node.closest('.monaco-editor, .CodeMirror, .ace_editor');
+    if (editor && isVisiblePasteTarget(editor)) {
+        return editor;
+    }
+
+    if (isWritablePasteTextarea(node) || isWritablePasteInput(node)) {
+        return node;
+    }
+
+    const editable = getContentEditableTarget(node);
+    if (editable && isVisiblePasteTarget(editable)) {
+        return editable;
+    }
+
+    return null;
+}
+
+function markPasteTarget(element) {
+    if (!element || !element.getAttribute) {
+        return '';
+    }
+    if (!element.getAttribute(LA_EDITOR_MARK_ATTR)) {
+        LA_PASTE_STATE.editorSequence += 1;
+        element.setAttribute(LA_EDITOR_MARK_ATTR, `la-editor-${Date.now()}-${LA_PASTE_STATE.editorSequence}`);
+    }
+    return element.getAttribute(LA_EDITOR_MARK_ATTR) || '';
+}
+
+function rememberPasteTarget(element) {
+    if (!element || !isVisiblePasteTarget(element)) {
+        return;
+    }
+    LA_PASTE_STATE.lastFocusedTarget = element;
+    markPasteTarget(element);
+}
+
+function rememberPasteSelection() {
+    const selection = window.getSelection ? window.getSelection() : null;
+    if (!selection || selection.rangeCount === 0) {
+        return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    const containerElement = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+    const editable = getContentEditableTarget(containerElement);
+
+    if (!editable || isLearningAssistantUiNode(editable)) {
+        return;
+    }
+
+    LA_PASTE_STATE.lastContentEditableRange = {
+        target: editable,
+        range: range.cloneRange()
+    };
+    rememberPasteTarget(editable);
+}
+
+function notifyBackgroundPasteTarget(element) {
+    const markerId = markPasteTarget(element);
+    if (!markerId) {
+        return;
+    }
+    try {
+        chrome.runtime.sendMessage({
+            type: 'la_paste_frame_target',
+            markerId: markerId,
+            editorMarkAttr: LA_EDITOR_MARK_ATTR,
+            href: location.href
+        });
+    } catch (error) {
+        // Ignore stale extension contexts.
+    }
+}
+
+function installPasteFrameTracker() {
+    if (window[LA_FRAME_TRACKER_KEY]) {
+        return;
+    }
+    window[LA_FRAME_TRACKER_KEY] = true;
+
+    const handlePotentialTargetEvent = (event) => {
+        if (isLearningAssistantUiNode(event.target)) {
+            return;
+        }
+        const target = findPasteEditorTargetFromNode(event.target);
+        if (!target) {
+            return;
+        }
+        rememberPasteTarget(target);
+        notifyBackgroundPasteTarget(target);
+    };
+
+    const handleSelectionChange = () => {
+        rememberPasteSelection();
+        if (LA_PASTE_STATE.lastContentEditableRange?.target) {
+            notifyBackgroundPasteTarget(LA_PASTE_STATE.lastContentEditableRange.target);
+        }
+    };
+
+    document.addEventListener('focusin', handlePotentialTargetEvent, true);
+    document.addEventListener('pointerdown', handlePotentialTargetEvent, true);
+    document.addEventListener('selectionchange', handleSelectionChange, true);
+}
+
+installPasteFrameTracker();
+
 class LearningAssistant {
     constructor() {
         this.socket = null;
@@ -170,11 +329,11 @@ class LearningAssistant {
                     <div class="la-tab" data-tab="manual">✎ 手动输入</div>
                 </div>
                 <div class="la-tab-content la-tab-auto la-tab-visible" data-tab="auto">
-                    <button class="la-btn la-btn-auto la-btn-full" title="F6">
-                        ⚡ 一键获取并粘贴 <span class="la-hotkey">F6</span>
+                    <button class="la-btn la-btn-auto la-btn-full">
+                        ⚡ 一键获取并粘贴
                     </button>
-                    <button class="la-btn la-btn-warning la-btn-full la-btn-correct" title="F5">
-                        🔄 智能纠错 <span class="la-hotkey">F5</span>
+                    <button class="la-btn la-btn-warning la-btn-full la-btn-correct">
+                        🔄 智能纠错
                     </button>
                     <div class="la-btn-row">
                         <button class="la-btn la-btn-ghost la-btn-half la-btn-simulate">模拟键盘输入</button>
@@ -191,8 +350,8 @@ class LearningAssistant {
                     <button class="la-btn la-btn-primary la-btn-full la-btn-fetch-question">
                         📋 获取题目
                     </button>
-                    <button class="la-btn la-btn-primary la-btn-full la-btn-manual-generate" title="F3" style="margin-top:8px">
-                        ✎ 生成代码 <span class="la-hotkey">F3</span>
+                    <button class="la-btn la-btn-primary la-btn-full la-btn-manual-generate" style="margin-top:8px">
+                        ✎ 生成代码
                     </button>
                     <div class="la-btn-row">
                         <button class="la-btn la-btn-ghost la-btn-half la-btn-simulate">模拟键盘输入</button>
@@ -273,14 +432,6 @@ class LearningAssistant {
             if (this.socket && this.socket.readyState === WebSocket.OPEN) {
                 this.socket.send(JSON.stringify({ type: 'set_language', language: this.langSelect.value }));
             }
-        });
-        // Hotkeys
-        document.addEventListener('keydown', (e) => {
-            if (!this.isVisible) return;
-            if (e.key === 'F3') { e.preventDefault(); this.manualInput(); }
-            if (e.key === 'F5') { e.preventDefault(); this.smartCorrection(); }
-            if (e.key === 'F6') { e.preventDefault(); this.autoGetAndPaste(); }
-            if (e.key === 'Escape' && this.isInputInProgress) { this.cancelInput(); }
         });
         // Listen for messages from background
         chrome.runtime.onMessage.addListener((msg) => {
@@ -848,32 +999,192 @@ class LearningAssistant {
     }
 
     async setCodeToPageEditor(code) {
-        const hasMonacoDom = !!document.querySelector('.monaco-editor');
+        const normalizedCode = String(code || '');
 
-        // Layer 0: Page context (Monaco API)
-        const pageContextResult = await this.setCodeViaPageContext(code);
-        if (pageContextResult.ok) return true;
-
-        // Monaco 页面只尝试 Monaco，避免误写到其他输入框
-        if (hasMonacoDom) {
-            if (this.setCodeToMonaco(code)) return true;
-            return false;
+        const pageResult = await this.requestPageEditorInsert(normalizedCode, '', true);
+        if (pageResult.ok) {
+            return pageResult;
         }
 
-        // Layer 1: Monaco DOM
-        if (this.setCodeToMonaco(code)) return true;
-        // Layer 2: CodeMirror
-        if (this.setCodeToCodeMirror(code)) return true;
-        // Layer 3: Ace
-        if (this.setCodeToAce(code)) return true;
-        // Layer 4: Textarea
-        if (this.setCodeToTextarea(code)) return true;
-        // Layer 5: ContentEditable
-        if (this.setCodeToContentEditable(code)) return true;
+        let lastFailure = pageResult || { ok: false, reason: 'no_candidate_editor' };
 
-        // All failed - request desktop keyboard input
-        this.requestDesktopInput(code);
-        return false;
+        const localTarget = this.getLocalPasteTarget();
+        if (localTarget) {
+            const localResult = this.insertIntoLocalTarget(localTarget, normalizedCode);
+            if (localResult.ok) {
+                return localResult;
+            }
+            lastFailure = localResult;
+
+            const markerId = markPasteTarget(localTarget);
+            const bridged = await this.requestPageEditorInsert(normalizedCode, markerId, false);
+            if (bridged.ok) {
+                return bridged;
+            }
+            lastFailure = bridged || lastFailure;
+        }
+
+        return lastFailure || { ok: false, reason: 'page_insert_failed' };
+    }
+
+    getLocalPasteTarget() {
+        const target = LA_PASTE_STATE.lastFocusedTarget;
+        if (target && isVisiblePasteTarget(target)) {
+            return target;
+        }
+        return null;
+    }
+
+    isComplexEditorTarget(target) {
+        return !!(target && target.matches && target.matches('.monaco-editor, .CodeMirror, .ace_editor'));
+    }
+
+    dispatchPasteInputEvents(element, text) {
+        try {
+            element.dispatchEvent(new InputEvent('input', {
+                bubbles: true,
+                cancelable: true,
+                inputType: 'insertFromPaste',
+                data: text
+            }));
+        } catch (error) {
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    insertIntoTextControl(element, text) {
+        if (!isWritablePasteTextarea(element) && !isWritablePasteInput(element)) {
+            return { ok: false, reason: 'not_text_control' };
+        }
+
+        element.focus();
+
+        const value = element.value || '';
+        const start = typeof element.selectionStart === 'number' ? element.selectionStart : value.length;
+        const end = typeof element.selectionEnd === 'number' ? element.selectionEnd : start;
+        if (typeof element.setRangeText === 'function') {
+            element.setRangeText(text, start, end, 'end');
+        } else {
+            element.value = value.slice(0, start) + text + value.slice(end);
+        }
+
+        this.dispatchPasteInputEvents(element, text);
+        rememberPasteTarget(element);
+        return { ok: true, reason: 'text_control' };
+    }
+
+    getSavedEditableRange(target) {
+        const saved = LA_PASTE_STATE.lastContentEditableRange;
+        if (!saved || saved.target !== target) {
+            return null;
+        }
+        if (!saved.range || !target.contains(saved.range.commonAncestorContainer)) {
+            return null;
+        }
+        return saved.range.cloneRange();
+    }
+
+    getActiveEditableRange(target) {
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || selection.rangeCount === 0) {
+            return null;
+        }
+        const range = selection.getRangeAt(0);
+        if (!target.contains(range.commonAncestorContainer)) {
+            return null;
+        }
+        return range.cloneRange();
+    }
+
+    insertIntoContentEditable(target, text) {
+        if (!(target && target.matches && target.matches('[contenteditable="true"]'))) {
+            return { ok: false, reason: 'not_contenteditable' };
+        }
+
+        target.focus();
+        const selection = window.getSelection ? window.getSelection() : null;
+        const range = this.getSavedEditableRange(target) || this.getActiveEditableRange(target);
+
+        if (range && selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+
+        let inserted = false;
+        try {
+            inserted = !!document.execCommand && document.execCommand('insertText', false, text);
+        } catch (error) {
+            inserted = false;
+        }
+
+        if (!inserted) {
+            const nextRange = selection && selection.rangeCount
+              ? selection.getRangeAt(0).cloneRange()
+              : document.createRange();
+            nextRange.deleteContents();
+            const textNode = document.createTextNode(text);
+            nextRange.insertNode(textNode);
+            nextRange.setStartAfter(textNode);
+            nextRange.collapse(true);
+            if (selection) {
+                selection.removeAllRanges();
+                selection.addRange(nextRange);
+            }
+        }
+
+        this.dispatchPasteInputEvents(target, text);
+        rememberPasteSelection();
+        rememberPasteTarget(target);
+        return { ok: true, reason: inserted ? 'contenteditable_execCommand' : 'contenteditable_range' };
+    }
+
+    insertIntoLocalTarget(target, text) {
+        if (!target || !isVisiblePasteTarget(target)) {
+            return { ok: false, reason: 'target_unavailable' };
+        }
+
+        if (isWritablePasteTextarea(target) || isWritablePasteInput(target)) {
+            return this.insertIntoTextControl(target, text);
+        }
+
+        if (target.matches && target.matches('[contenteditable="true"]')) {
+            return this.insertIntoContentEditable(target, text);
+        }
+
+        return { ok: false, reason: 'needs_page_bridge' };
+    }
+
+    async requestPageEditorInsert(text, markerId = '', allowFallback = true) {
+        return new Promise((resolve) => {
+            try {
+                chrome.runtime.sendMessage({
+                    type: 'la_copy_paste_page_insert',
+                    text: text,
+                    markerId: markerId || '',
+                    editorMarkAttr: LA_EDITOR_MARK_ATTR,
+                    allowFallback: !!allowFallback
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ ok: false, reason: chrome.runtime.lastError.message });
+                        return;
+                    }
+                    resolve(response || { ok: false, reason: 'empty_background_response' });
+                });
+            } catch (error) {
+                resolve({ ok: false, reason: error && error.message ? error.message : String(error) });
+            }
+        });
+    }
+
+    getPasteFailureMessage(reason) {
+        if (reason === 'no_candidate_editor' || reason === 'target_not_found') {
+            return '未识别到页面编辑器';
+        }
+        if (reason === 'editor_detected_but_replace_failed' || reason === 'no_page_editor_api_matched') {
+            return '识别到编辑器但清空失败';
+        }
+        return `页面内粘贴失败: ${reason || 'unknown_paste_error'}`;
     }
 
     async setCodeViaPageContext(code) {
@@ -1217,18 +1528,6 @@ class LearningAssistant {
         return false;
     }
 
-    requestDesktopInput(code) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({
-                type: 'ready_for_input',
-                code: code,
-                input_method: 'paste'
-            }));
-            this.addLog('回退到桌面端键盘模拟输入', 'warning');
-        } else {
-            this.addLog('无法写入代码：未连接服务器', 'error');
-        }
-    }
 
     // ========== Test Results Extraction ==========
     extractTestResults() {
@@ -1445,11 +1744,11 @@ class LearningAssistant {
         }
         this.showTopTip('代码输入中...');
         try {
-            const success = await this.setCodeToPageEditor(codeToPaste);
-            if (success) {
+            const pasteResult = await this.setCodeToPageEditor(codeToPaste);
+            if (pasteResult && pasteResult.ok) {
                 this.addLog('代码已粘贴到编辑器', 'success');
             } else {
-                this.addLog('自动粘贴失败，请手动复制代码', 'error');
+                this.addLog(this.getPasteFailureMessage(pasteResult && pasteResult.reason), 'error');
             }
         } catch (error) {
             this.addLog(`粘贴出错: ${error.message}`, 'error');
@@ -1561,6 +1860,7 @@ class LearningAssistant {
 
 // Initialize
 (async function() {
+    if (!LA_IS_TOP_FRAME) return;
     if (window.__la_instance) return;
     window.__la_instance = new LearningAssistant();
 })();

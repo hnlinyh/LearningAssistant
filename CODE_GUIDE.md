@@ -2,6 +2,25 @@
 
 ## 项目架构总览
 
+```python
+# 正常生成模式（6条规则）
+你是一个专业的编程助手，负责生成{lang_name}代码。
+重要规则：
+1. 只返回纯代码，不要有任何解释、注释或额外文字
+2. 绝对不要使用任何代码块标记
+3. 代码必须完整且可运行，包括导入的库和模块等
+4. 如果用户提供了已有代码，已有代码是不可改动的既有内容，严格保留
+5. 如果用户提供了已有代码，只能在原有代码基础上补充缺失部分
+6. 必须返回完整最终代码文件
+
+# 纠错模式（5条规则）
+你是一个专业的编程助手，负责根据测试失败信息修正{lang_name}代码。
+重要规则：
+1. 只返回纯代码，不要有任何解释、注释或额外文字
+2. 绝对不要使用任何代码块标记
+3. 代码必须完整且可运行，包括导入的库和模块等
+4. 必须返回完整最终代码文件，不能只返回局部补丁
+5. 专注于修复已知的错误，确保代码通过所有测试
 ```
 main.py                          # 入口：初始化环境、启动主窗口
 ├── path_config.py               # 路径常量
@@ -47,8 +66,8 @@ main.py                          # 入口：初始化环境、启动主窗口
 | 运行配置 Tab 的 UI / 扩展安装按钮 | `gui/main_window.py` + `gui/extension_dialog.py` |
 | 服务器 Tab 的 UI / 启停服务器 | `gui/main_window.py` + `core/server.py` |
 | WebSocket 消息分发逻辑 | `core/server.py` 的 `_handler()` + `core/assistant.py` 的 `server()` |
-| AI 代码生成 Prompt / 纠错逻辑 | `core/assistant.py` 的 `get_complete_code_solution()` |
-| AI Prompt 系统指令 | `core/assistant.py` 的 `_get_system_prompt()` |
+| **AI 代码生成 Prompt / 纠错逻辑** | `core/assistant.py` 的 `get_complete_code_solution()` |
+| AI Prompt 系统指令 | `core/assistant.py` 的 `_get_system_prompt()`（正常生成6条规则 / 纠错5条规则） |
 | 键盘模拟 / 粘贴逻辑 | `utils/input_simulator.py` |
 | 配置保存到 .env / 从 .env 加载 | `utils/config.py` |
 | 浏览器扩展自动加载 (Selenium) | `utils/extension_setup.py` 的 `launch_with_extension_selenium()` |
@@ -70,7 +89,8 @@ main.py                          # 入口：初始化环境、启动主窗口
 
 ```
 main.py: main()
-  ├─ ensure_env()                  # 检查 .env 是否存在，不存在则从 .env.example 复制
+  ├─ logging.basicConfig()         # 初始化日志（控制台 + 文件）
+  ├─ ensure_env()                  # 检查 .env 是否存在，不存在则直接创建默认配置
   ├─ load_dotenv()                 # 加载 .env 环境变量
   ├─ ctk.set_appearance_mode()     # 设置外观模式（light/dark）
   ├─ ctk.set_default_color_theme() # 设置默认颜色主题
@@ -89,7 +109,7 @@ main.py: main()
 ```
 
 **关键逻辑**：
-- 应用启动时自动检查 `.env` 文件，不存在则从 `.env.example` 复制
+- 应用启动时自动检查 `.env` 文件，不存在则直接创建包含默认配置的新文件
 - 通过 `load_dotenv()` 加载环境变量（API Key、Base URL、Model、WS Port）
 - 主窗口初始化时从 `.env` 读取配置并填充到GUI控件
 - 用户修改配置时自动保存到 `.env`（通过 `selected_model.trace_add` 监听）
@@ -105,7 +125,7 @@ main.py: main()
        ├─ 读取 API Key 和 Base URL
        ├─ _save_config_to_env()     # 先保存配置
        └─ 启动后台线程 _fetch_models_thread()
-            └─ ModelManager.fetch_models(api_key, base_url)
+            └─ ModelManager(gui).fetch_models(api_key, base_url)
                  └─ AsyncOpenAI(api_key, base_url).models.list()
                       └─ 返回所有模型的 id 列表
             └─ _update_model_list(models)
@@ -119,7 +139,7 @@ main.py: main()
 用户点击"测试选中模型"按钮
   └─ MainWindow._test_model()
        └─ 启动后台线程 _test_model_thread()
-            └─ ModelManager.test_model(api_key, base_url, model_name)
+            └─ ModelManager(gui).test_model(api_key, base_url, model_name)
                  └─ AsyncOpenAI().chat.completions.create()
                       ├─ model=model_name
                       ├─ messages=[{"role": "user", "content": "Say OK"}]
@@ -168,8 +188,11 @@ main.py: main()
                            ├─ ping_interval=20
                            ├─ ping_timeout=60
                            └─ process_request=_process_request（处理 /discover 请求）
-       ├─ 更新UI状态（绿色指示灯、服务器运行中标签）
-       └─ 写入 server-config.json 到扩展目录
+       ├─└─ 更新UI状态（绿色指示灯、服务器运行中标签）
+       └─ 写入 server-config.json 到扩展目录（包含 ws_port、ws_url、ocr_api_url）：
+            ├─ ws_port: 端口号
+            ├─ ws_url: WebSocket 地址
+            └─ ocr_api_url: 'https://ocr.yhsun.cn/'
 ```
 
 **停止服务器流程**：
@@ -207,16 +230,16 @@ main.py: main()
 ```
 浏览器扩展发送题目（content_auto_input 或 manual_question）
   └─ LearningAssistant.handle_content_auto_input()
-       ├─ 提取 question、current_code、language
+       ├─ 提取 question、current_code、language、sync_question
        ├─ 更新 current_language
-       ├─ 调用 gui.set_question(question)  # 同步更新桌面端输入框
+       ├─ 根据 sync_question 标志位决定是否调用 gui.set_question(question)
        ├─ 发送 server_ack 消息（status: processing）
        └─ get_complete_code_solution(question, current_code)
             ├─ 检查 client 是否初始化（API Key 是否存在）
             ├─ 构建 prompt：
-            │    ├─ 题目要求
-            │    ├─ 已有代码（如有，标注"不可修改"）
-            │    └─ 生成指令
+       │    ├─ 题目要求
+       │    ├─ 已有代码（如有，标注"不可修改"）
+       │    └─ 生成指令（有已有代码时提示"在已有代码基础上补充"，无已有代码时提示"生成完整代码"）
             ├─ 尝试 2 次 API 调用：
             │    ├─ 第1次：temperature=0.3
             │    └─ 第2次：temperature=0（更确定性）
@@ -238,16 +261,16 @@ main.py: main()
 **代码清理逻辑**：
 ```
 clean_code_response(content)
+  ├─ 如果内容为空，返回 ''
   ├─ 正则匹配 ```语言\n代码\n``` 块
   ├─ 如果有匹配，返回最长的代码块
-  └─ 如果没有匹配，返回去掉注释行的内容
+  └─ 如果没有匹配，返回去掉注释行（#、//、<!--）的内容
 ```
 
 **代码完整性检查**：
 ```
 _is_complete_code(code, existing_code)
-  ├─ 代码长度 < 20 字符 → False
-  ├─ 如果有已有代码，新代码长度 < 已有代码的 50% → False
+  ├─ 代码为空或长度 < 20 字符 → False
   └─ 其他情况 → True
 ```
 
@@ -265,10 +288,10 @@ _is_complete_code(code, existing_code)
        └─ 如果有失败：
             └─ get_complete_code_solution(question, current_code, test_text)
                  ├─ 构建 prompt（纠错模式）：
-                 │    ├─ 题目要求
-                 │    ├─ 已有代码
-                 │    ├─ 测试失败信息
-                 │    └─ 修复指令
+       │    ├─ 题目要求
+       │    ├─ 已有代码
+       │    ├─ 测试失败信息
+       │    └─ 修复指令（"请根据测试失败信息修复代码中的错误，返回完整修复后的代码"）
                  ├─ 调用 _get_system_prompt(has_test_failure=True)
                  │    └─ 返回纠错专用系统提示词
                  ├─ 尝试 2 次 API 调用：
@@ -364,13 +387,14 @@ InputSimulator._press_key(key)
 ```
 InputSimulator.paste_code(code)
   ├─ _install_esc_hook()  # 注册 ESC 键监听
-  ├─ pyautogui.click(屏幕中心)  # 确保焦点在目标窗口
-  ├─ time.sleep(0.3)
-  ├─ _clear_editor_before_input()
-  │    ├─ pyautogui.hotkey('ctrl', 'a')  # 全选
-  │    ├─ time.sleep(0.1)
-  │    └─ pyautogui.press('delete')      # 删除
-  ├─ time.sleep(0.2)
+       ├─ pyautogui.click(屏幕中心)  # 确保焦点在目标窗口
+       ├─ time.sleep(0.3)
+       ├─ _clear_editor_before_input()
+       │    ├─ pyautogui.hotkey('ctrl', 'a')  # 全选
+       │    ├─ time.sleep(0.1)
+       │    ├─ pyautogui.press('delete')      # 删除
+       │    └─ time.sleep(0.1)
+       ├─ time.sleep(0.2)
   ├─ pyperclip.copy(code)               # 复制到剪贴板
   ├─ pyautogui.hotkey('ctrl', 'v')      # 粘贴
   ├─ time.sleep(0.5)
@@ -381,10 +405,14 @@ InputSimulator.paste_code(code)
 ```
 InputSimulator.simulate_typing(text, delay, on_progress)
   ├─ _install_esc_hook()
-  ├─ pyautogui.click(屏幕中心)
-  ├─ time.sleep(0.3)
-  ├─ _clear_editor_before_input()
-  ├─ time.sleep(0.2)
+       ├─ pyautogui.click(屏幕中心)
+       ├─ time.sleep(0.3)
+       ├─ _clear_editor_before_input()
+       │    ├─ pyautogui.hotkey('ctrl', 'a')  # 全选
+       │    ├─ time.sleep(0.1)
+       │    ├─ pyautogui.press('delete')      # 删除
+       │    └─ time.sleep(0.1)
+       ├─ time.sleep(0.2)
   └─ 逐行循环：
        ├─ 检查 esc_pressed 或 typing_active
        │    └─ 如果中断，返回 False
@@ -434,7 +462,7 @@ _remove_esc_hook()
 ExtensionSetup.launch_with_extension(browser, url)
   ├─ _acquire_single_instance_lock()  # 防止重复启动
   │    └─ 绑定端口 48573 的 socket
-  │    └─ 如果端口被占用，返回 False
+  │    └─ 如果端口被占用，返回 False 并提示 "已有浏览器实例在运行，请先关闭"
   └─ 优先尝试 Selenium 模式：
        └─ launch_with_extension_selenium()
             ├─ 查找扩展目录（包含 manifest.json）
@@ -454,6 +482,8 @@ ExtensionSetup.launch_with_extension(browser, url)
                  └─ 命令行启动：
                       ├─ chrome --load-extension=临时目录
                       └─ 附加 --no-first-run --no-default-browser-check
+                 └─ 如果 Chrome 未找到，自动尝试 Edge
+                 └─ 如果都未找到，返回错误信息
 ```
 
 **浏览器路径查找**：
@@ -480,9 +510,67 @@ get_extension_dir()
   │    ├─ 上级目录/chrome
   │    ├─ 当前工作目录/chrome/chrome
   │    └─ 当前工作目录/chrome
-  └─ 检查每个路径下是否存在 manifest.json
-  └─ 返回第一个匹配的路径
+  └─ 检查每个路径下是否存在 manifest.json│    └─ 返回第一个匹配的路径
 ```
+
+---
+
+### 10. 配置同步与广播业务逻辑
+
+**配置同步请求**：
+```
+扩展端发送 sync_input_config 消息
+  └─ LearningAssistant.handle_sync_input_config(websocket, data)
+       ├─ 提取 config 字典
+       └─ broadcast_to_clients({type: "sync_input_config", config})
+            └─ 遍历 connected_clients 集合
+                 ├─ 向每个客户端发送消息
+                 └─ 清理断开的连接
+```
+
+**广播机制**：
+```
+ServerManager.broadcast_config(config)
+  └─ 获取 _server_loop（服务器事件循环）
+  └─ asyncio.run_coroutine_threadsafe(
+       assistant.broadcast_to_clients({type: "sync_input_config", config}),
+       loop
+     )
+```
+
+**桌面端保存配置**：
+```
+InputTab._save_config()
+  ├─ 验证参数（wait_time、interval）
+  ├─ 构建 config 字典
+  ├─ 通过 mw.server_manager.broadcast_config(config) 广播
+  └─ 日志："配置已保存并同步到扩展端"
+```
+
+---
+
+### 11. 新增方法补充
+
+**assistant.py 新增方法**：
+
+| 方法 | 做什么 |
+|-----|-------|
+| `handle_sync_input_config(websocket, data)` | 处理扩展端配置同步请求，广播到所有客户端 |
+| `broadcast_to_clients(message)` | 向所有连接的 WebSocket 客户端广播消息，自动清理断开连接 |
+| `generate_code_for_gui(question, existing_code)` | 供 GUI 直接调用代码生成，包装 get_complete_code_solution |
+| `type_text(text)` | 直接输入文本（3秒倒计时后粘贴），供 InputSimulator 使用 |
+
+**extension_setup.py 补充**：
+
+| 方法 | 做什么 |
+|-----|-------|
+| `_acquire_single_instance_lock()` | 绑定端口 48573 防止重复启动，失败返回 False 并提示 "已有浏览器实例在运行" |
+| `_release_single_instance_lock()` | 释放单实例锁 |
+| `get_chrome_version()` | 通过注册表或命令行获取 Chrome 版本号 |
+| `get_edge_version()` | 通过注册表获取 Edge 版本号 |
+| `open_chrome_extensions()` | 打开 Chrome 扩展管理页面 |
+| `open_edge_extensions()` | 打开 Edge 扩展管理页面 |
+| `open_extension_folder()` | 打开扩展文件夹（explorer/open/xdg-open） |
 
 ---
 
@@ -661,14 +749,18 @@ UpdateWindow.__init__()
 
 | 函数 | 做什么 |
 |-----|-------|
-| `ensure_env()` | 检查 `.env` 是否存在，不存在则从 `.env.example` 复制 |
+| `logging.basicConfig()` | 初始化日志系统，输出到控制台和 `learning_assistant.log` 文件 |
+| `ensure_env()` | 检查 `.env` 是否存在，不存在则直接创建包含默认配置的新文件 |
 | `main()` | 加载 dotenv，设置 CTkinter 外观，创建 `MainWindow` 并进入事件循环 |
 
 ---
 
 ### `path_config.py`
 
-**职责**：定义项目全局路径常量
+**职责**：定义项目全局路径常量，管理 sys.path
+
+**关键逻辑**：
+- 在模块导入时自动将 `PROJECT_ROOT` 插入 `sys.path` 首位，确保其他模块可以正确导入
 
 **导出常量**：
 
@@ -709,8 +801,8 @@ UpdateWindow.__init__()
 | `log_message(msg)` | 委托给 `log_panel.log_message()` |
 | `set_question(question)` | 更新输入内容框（线程安全，供 assistant.py 调用） |
 | `set_code(code)` | 更新输入内容框（线程安全，供 assistant.py 调用） |
-| `_fetch_models()` | 获取模型列表 |
-| `_test_model()` | 测试选中模型 |
+| `_fetch_models()` | 获取模型列表（调用 ModelManager 实例方法） |
+| `_test_model()` | 测试选中模型（调用 ModelManager 实例方法） |
 | `_start_server()` | 启动 WebSocket 服务器 |
 | `_stop_server()` | 停止服务器 |
 | `_launch_browser()` | 启动浏览器 |
@@ -734,9 +826,11 @@ UpdateWindow.__init__()
 | 组件 | 类型 | 用途 |
 |-----|------|------|
 | `input_content_text` | `CTkTextbox` | 输入内容面板（可编辑） |
+| `lang_menu` | `CTkOptionMenu` | 编程语言选择器 |
 | `input_wait_time_var` | `StringVar` | 等待时间参数 |
 | `input_interval_var` | `StringVar` | 输入间隔参数 |
 | `input_special_char_var` | `BooleanVar` | 特殊字符处理开关 |
+| `cancel_btn` | `CTkButton` | 取消输入按钮（输入时启用，完成后禁用） |
 
 **关键方法**：
 
@@ -744,7 +838,9 @@ UpdateWindow.__init__()
 |-----|-------|
 | `_copy_code()` | 复制代码到剪贴板 |
 | `_input_test()` | 模拟键盘输入（带倒计时逐行输入） |
-| `_input_test_thread(text, wait_time, interval)` | 后台线程执行逐行输入 |
+| `_input_test_thread(text, wait_time, interval)` | 后台线程执行逐行输入，带进度更新和 ESC 中断支持 |
+| `_cancel_input()` | 取消输入，设置 `typing_active = False` |
+| `_save_config()` | 保存输入配置并广播到扩展端 |
 | `_validate_test_params()` | 验证等待时间和输入间隔参数 |
 
 ---
@@ -796,8 +892,11 @@ UpdateWindow.__init__()
 | `start()` | 在新线程中启动 WebSocket 服务器 |
 | `stop()` | 停止服务器，重置 assistant 状态 |
 | `_handler()` | 接收客户端连接，调用 `assistant.server()` 处理消息 |
+| `_process_request()` | 处理 HTTP 发现请求（/discover），返回 ws_port 和 ws_url |
+| `_start_websocket_server()` | 创建 LearningAssistant 实例，启动 websockets.serve |
 | `update_model()` | 通知 assistant 更新模型配置 |
 | `set_language()` | 通知 assistant 更新语言设置 |
+| `broadcast_config()` | 通过事件循环广播配置到所有连接的客户端 |
 
 **通信流程**：
 ```
@@ -818,10 +917,14 @@ UpdateWindow.__init__()
 |-----|-------|
 | `__init__(gui, model_info)` | 初始化 client、input_simulator、状态变量 |
 | `server()` | **消息分发中心**，根据 `msg_type` 分发到不同 handler |
-| `handle_content_auto_input()` | 处理题目内容 → 生成代码 → 返回 `code_solution`，同时调用 `gui.set_question()` 更新桌面端 |
-| `handle_test_results()` | 处理测试失败 → 纠错 → 返回 `code_revision` |
+| `handle_content_auto_input()` | 处理题目内容 → 生成代码 → 返回 `code_solution`，根据 `sync_question` 标志决定是否调用 `gui.set_question()` 更新桌面端 |
+| `handle_test_results()` | 处理测试失败 → 纠错 → 返回 `code_revision`，同时调用 `gui.set_code()` 同步纠错后代码 |
 | `handle_ready_for_input()` | 将代码粘贴到编辑器 |
 | `handle_sync_code()` | 接收扩展同步的代码，调用 `gui.set_code()` 显示到桌面端 |
+| `handle_simulate_input()` | 处理扩展端的模拟键盘输入请求，带倒计时和进度更新 |
+| `handle_cancel_input()` | 处理取消输入请求，设置 `typing_active = False` |
+| `handle_sync_input_config()` | 处理配置同步请求，通过 `broadcast_to_clients()` 广播到所有客户端 |
+| `broadcast_to_clients()` | 向所有连接的 WebSocket 客户端广播消息，自动清理断开连接 |
 | `generate_code_for_gui()` | 供 GUI 直接调用的代码生成入口 |
 | `get_complete_code_solution()` | **AI 代码生成主函数**，同时支持代码生成和纠错场景 |
 
@@ -837,6 +940,9 @@ UpdateWindow.__init__()
 | `progress_request` | `send_progress_update()` | 请求进度 |
 | `set_language` | `set_language()` | 设置语言 |
 | `sync_code` | `handle_sync_code()` | 同步代码到桌面端 |
+| `simulate_input` | `handle_simulate_input()` | 扩展端请求模拟键盘输入 |
+| `cancel_request` | `handle_cancel_input()` | 取消输入请求 |
+| `sync_input_config` | `handle_sync_input_config()` | 配置同步请求，广播到所有客户端 |
 
 ---
 
@@ -850,9 +956,9 @@ UpdateWindow.__init__()
 
 | 方法 | 做什么 |
 |-----|-------|
-| `fetch_models()` | 调用 `/models` API 获取模型列表 |
-| `test_model()` | 测试模型连通性，返回 `{success, latency, error}` |
-| `filter_models()` | 按关键词过滤模型 |
+| `fetch_models(api_key, base_url)` | 调用 `/models` API 获取模型列表（异步实例方法） |
+| `test_model(api_key, base_url, model_name)` | 测试模型连通性，返回 `{success, latency, error}`（异步实例方法） |
+| `filter_models(keyword)` | 按关键词过滤模型 |
 
 ---
 
@@ -882,9 +988,9 @@ UpdateWindow.__init__()
 
 | 方法 | 做什么 |
 |-----|-------|
-| `paste_code()` | **主入口**：清空编辑器 → 复制到剪贴板 → Ctrl+V 粘贴 |
-| `simulate_typing()` | 逐字/逐行输入（带进度回调） |
-| `type_text()` | 直接粘贴（复制+Ctrl+V，带3秒倒计时） |
+| `paste_code()` | **主入口**：安装 ESC 钩子 → 点击屏幕中心 → 清空编辑器（Ctrl+A → Delete） → 复制到剪贴板 → Ctrl+V 粘贴 → 移除 ESC 钩子 |
+| `simulate_typing()` | 逐字/逐行输入（带进度回调，ESC 可中断） |
+| `type_text()` | 直接粘贴（3秒倒计时 → 复制+Ctrl+V，失败回退 keyboard.write） |
 | `_write_text()` | 写文本（底层方法） |
 | `_press_key()` | 按键（底层方法） |
 | `reset()` | 重置 `typing_active` 和 `esc_pressed` 状态 |
@@ -905,6 +1011,24 @@ UpdateWindow.__init__()
 
 **关键类**：`ExtensionSetup`
 
+**关键方法**：
+
+| 方法 | 做什么 |
+|-----|-------|
+| `launch_with_extension(browser, url)` | 启动浏览器并加载扩展（优先 Selenium，回退简单模式） |
+| `launch_with_extension_selenium(browser, url)` | 使用 Selenium WebDriver 启动，自动下载匹配 driver |
+| `launch_with_extension_simple(browser, url)` | 命令行简单启动，回退方案 |
+| `_acquire_single_instance_lock()` | 绑定端口 48573 防止重复启动 |
+| `_release_single_instance_lock()` | 释放单实例锁 |
+| `get_chrome_path()` | 查找 Chrome 可执行文件路径（Windows/macOS/Linux） |
+| `get_edge_path()` | 查找 Edge 可执行文件路径 |
+| `get_chrome_version()` | 获取 Chrome 版本号 |
+| `get_edge_version()` | 获取 Edge 版本号 |
+| `get_extension_dir()` | 查找扩展目录（包含 manifest.json） |
+| `open_chrome_extensions()` | 打开 Chrome 扩展管理页面 |
+| `open_edge_extensions()` | 打开 Edge 扩展管理页面 |
+| `open_extension_folder()` | 打开扩展文件夹 |
+
 ---
 
 ## WebSocket 消息协议
@@ -921,6 +1045,9 @@ UpdateWindow.__init__()
 | `progress_request` | 请求进度 | - | `assistant.py: send_progress_update()` |
 | `set_language` | 切换语言 | `language` | `assistant.py: set_language()` |
 | `sync_code` | 同步代码到桌面 | `code` | `assistant.py: handle_sync_code()` |
+| `simulate_input` | 请求模拟键盘输入 | `code`, `interval`, `special_char`, `wait_time` | `assistant.py: handle_simulate_input()` |
+| `cancel_request` | 取消输入 | - | `assistant.py: handle_cancel_input()` |
+| `sync_input_config` | 配置同步 | `config` | `assistant.py: handle_sync_input_config()` |
 
 ### 桌面端 → 扩展
 
@@ -932,6 +1059,10 @@ UpdateWindow.__init__()
 | `input_complete` | 粘贴完成 | `success`, `method_used` |
 | `progress_update` | 进度更新 | `progress`, `stage` |
 | `sync_code_ack` | 代码同步确认 | `status` |
+| `input_progress` | 输入倒计时进度 | `message` |
+| `cancel_input_ack` | 取消输入确认 | - |
+| `sync_input_config` | 配置同步广播 | `config` |
+| `config_info` | 连接成功时发送 | `model` |
 | `error` | 错误 | `code`, `message` |
 
 ---
@@ -970,6 +1101,8 @@ UpdateWindow.__init__()
 
 - `InputTab._input_test()`: 启动输入测试
 - `InputTab._input_test_thread()`: 后台执行逐行输入
+- `InputTab._cancel_input()`: 取消输入
+- `InputTab._save_config()`: 保存配置并广播
 - `InputSimulator._write_text()`: 底层文本写入
 - `InputSimulator._press_key()`: 底层按键
 
@@ -988,8 +1121,11 @@ UpdateWindow.__init__()
 
 **文件**：`core/assistant.py`（数据来源）+ `gui/main_window.py`（GUI更新）
 
-- `assistant.handle_content_auto_input()`: 扩展端发来题目时调用 `gui.set_question()` 更新GUI
+- `assistant.handle_content_auto_input()`: 扩展端发来题目时，根据 `sync_question` 标志决定是否调用 `gui.set_question()` 更新GUI
 - `assistant.handle_sync_code()`: 扩展端同步代码时调用 `gui.set_code()` 更新GUI
+- `assistant.handle_simulate_input()`: 扩展端请求模拟输入时执行输入并发送进度更新
+- `assistant.handle_cancel_input()`: 处理取消输入请求
+- `assistant.handle_sync_input_config()`: 处理配置同步并广播
 
 ---
 
@@ -1017,3 +1153,4 @@ UpdateWindow.__init__()
 3. **gui/tabs/** — 独立的Tab模块，通过 `self.mw` 访问 MainWindow 共享状态
 4. **gui/main_window.py** — 薄编排层，只负责创建组件和协调交互
 5. **core/** — 核心业务逻辑，通过 `gui.set_question()` / `gui.set_code()` 等方法与GUI交互，不直接访问widget
+6. **sys.path 管理** — `path_config.py` 在导入时将 `PROJECT_ROOT` 插入 `sys.path` 首位，确保模块可正确导入

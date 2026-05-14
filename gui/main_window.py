@@ -75,7 +75,7 @@ class MainWindow(ctk.CTk):
         # Create tabs
         self.tab_model = self.tabview.add("AI 模型")
         self.tab_input = self.tabview.add("桌面输入")
-        self.tab_config = self.tabview.add("运行配置")
+        self.tab_config = self.tabview.add("扩展管理")
         self.tab_server = self.tabview.add("服务器")
 
         self._build_model_tab()
@@ -83,7 +83,7 @@ class MainWindow(ctk.CTk):
         from gui.tabs.input_tab import InputTab
         self.input_tab = InputTab(self.tab_input, main_window=self)
         self.input_tab.pack(fill='both', expand=True)
-        self._build_config_tab()
+        self._build_extension_tab()
         self._build_server_tab()
 
         # 日志区 — 使用LogPanel组件，占满剩余空间
@@ -151,29 +151,55 @@ class MainWindow(ctk.CTk):
         self.model_list_frame = ctk.CTkScrollableFrame(frame, fg_color=BG, corner_radius=10, border_width=1, border_color=BORDER)
         self.model_list_frame.pack(fill='both', expand=True, padx=16, pady=(0, 16))
 
-    def _build_config_tab(self):
+    def _build_extension_tab(self):
         frame = self.tab_config
-        self.config_frame_inner = ctk.CTkFrame(frame, fg_color='transparent')
-        self.config_frame_inner.pack(fill='both', expand=True, padx=16, pady=16)
+        ext_frame = ctk.CTkFrame(frame, fg_color='transparent')
+        ext_frame.pack(fill='both', expand=True, padx=16, pady=16)
 
-        self.config_paste_mode = ctk.BooleanVar(value=True)
-        self.config_show_log = ctk.BooleanVar(value=True)
-        self.config_auto_start = ctk.BooleanVar(value=False)
-        self.config_minimize_tray = ctk.BooleanVar(value=True)
+        # 说明文字
+        ctk.CTkLabel(ext_frame, text="浏览器扩展负责提取题目、读写编辑器代码，是学习助手的核心组件",
+                     text_color=TEXT_SECONDARY, font=("", 12)).pack(anchor='w', pady=(0, 12))
 
-        for text, var in [
-            ("启用复制粘贴模式", self.config_paste_mode),
-            ("显示日志", self.config_show_log),
-            ("开机自启", self.config_auto_start),
-            ("关闭时最小化到托盘", self.config_minimize_tray),
-        ]:
-            ctk.CTkSwitch(self.config_frame_inner, text=text, variable=var,
-                          progress_color=PRIMARY, font=("", 13)).pack(anchor='w', pady=8)
+        # 自动安装区域
+        auto_frame = ctk.CTkFrame(ext_frame, fg_color=SURFACE, corner_radius=12, border_width=1, border_color=BORDER)
+        auto_frame.pack(fill='x', pady=(0, 12))
+        ctk.CTkLabel(auto_frame, text="自动安装", font=("", 14, "bold"),
+                     text_color=TEXT_PRIMARY).pack(anchor='w', padx=16, pady=(12, 4))
+        ctk.CTkLabel(auto_frame, text="Chrome 会启动 Chrome for Testing（开发专用），Edge 使用本机浏览器自动加载扩展",
+                     text_color=TEXT_SECONDARY, font=("", 12)).pack(anchor='w', padx=16, pady=(0, 8))
 
-        # 安装浏览器扩展按钮
-        ctk.CTkButton(self.config_frame_inner, text="安装浏览器扩展", fg_color=PRIMARY,
-                       hover_color=PRIMARY_DARK, corner_radius=10, height=36,
-                       font=("", 13), command=self._show_extension_dialog).pack(anchor='w', pady=(16, 0))
+        auto_btn_frame = ctk.CTkFrame(auto_frame, fg_color='transparent')
+        auto_btn_frame.pack(fill='x', padx=16, pady=(0, 12))
+        ctk.CTkButton(auto_btn_frame, text="启动 Chrome for Testing", fg_color=SUCCESS, hover_color='#0D9668',
+                       corner_radius=8, height=36, font=("", 13, "bold"),
+                       command=lambda: self._run_async(lambda: self._launch_browser_ext('chrome'))).pack(side='left', expand=True, fill='x', padx=(0, 4))
+        ctk.CTkButton(auto_btn_frame, text="启动 Edge", fg_color=SUCCESS, hover_color='#0D9668',
+                       corner_radius=8, height=36, font=("", 13, "bold"),
+                       command=lambda: self._run_async(lambda: self._launch_browser_ext('edge'))).pack(side='left', expand=True, fill='x', padx=(4, 0))
+
+        # 手动安装区域
+        manual_frame = ctk.CTkFrame(ext_frame, fg_color=SURFACE, corner_radius=12, border_width=1, border_color=BORDER)
+        manual_frame.pack(fill='x')
+        ctk.CTkLabel(manual_frame, text="手动安装", font=("", 14, "bold"),
+                     text_color=TEXT_PRIMARY).pack(anchor='w', padx=16, pady=(12, 4))
+
+        manual_btn_frame = ctk.CTkFrame(manual_frame, fg_color='transparent')
+        manual_btn_frame.pack(fill='x', padx=16, pady=(0, 12))
+        ctk.CTkButton(manual_btn_frame, text="Chrome 扩展管理", fg_color=SURFACE, border_width=1,
+                       border_color=BORDER, corner_radius=8, height=32, text_color=TEXT_PRIMARY,
+                       font=("", 12), hover_color=PRIMARY_LIGHT,
+                       command=lambda: self._run_async(self._open_chrome_ext)).pack(side='left', expand=True, fill='x', padx=(0, 4))
+        ctk.CTkButton(manual_btn_frame, text="Edge 扩展管理", fg_color=SURFACE, border_width=1,
+                       border_color=BORDER, corner_radius=8, height=32, text_color=TEXT_PRIMARY,
+                       font=("", 12), hover_color=PRIMARY_LIGHT,
+                       command=lambda: self._run_async(self._open_edge_ext)).pack(side='left', expand=True, fill='x', padx=4)
+        ctk.CTkButton(manual_btn_frame, text="扩展文件夹", fg_color=SURFACE, border_width=1,
+                       border_color=BORDER, corner_radius=8, height=32, text_color=TEXT_PRIMARY,
+                       font=("", 12), hover_color=PRIMARY_LIGHT,
+                       command=lambda: self._run_async(self._open_ext_folder)).pack(side='left', expand=True, fill='x', padx=(4, 0))
+
+        self.extension_status_label = ctk.CTkLabel(ext_frame, text="", text_color=TEXT_SECONDARY, font=("", 11))
+        self.extension_status_label.pack(anchor='w', pady=(12, 0))
 
     def _build_server_tab(self):
         frame = self.tab_server
@@ -393,7 +419,7 @@ class MainWindow(ctk.CTk):
             self.tray_icon = None
 
     def _on_close(self):
-        if self.config_minimize_tray.get() and self.tray_icon:
+        if self.tray_icon:
             self.withdraw()
             threading.Thread(target=self.tray_icon.run, daemon=True).start()
         else:
@@ -419,9 +445,39 @@ class MainWindow(ctk.CTk):
         self.input_tab.input_content_text.delete('1.0', 'end')
         self.input_tab.input_content_text.insert('1.0', text)
 
-    def _show_extension_dialog(self):
-        from gui.extension_dialog import ExtensionInstallDialog
-        ExtensionInstallDialog(self)
+    def _run_async(self, func):
+        threading.Thread(target=func, daemon=True).start()
+
+    def _set_extension_status(self, success, msg):
+        color = SUCCESS if success else ERROR
+        self.after(0, lambda: self.extension_status_label.configure(text=msg, text_color=color))
+        self.log_message(msg)
+
+    def _set_extension_progress(self, msg):
+        self.after(0, lambda: self.extension_status_label.configure(text=msg, text_color=TEXT_SECONDARY))
+
+    def _open_chrome_ext(self):
+        from utils.extension_setup import ExtensionSetup
+        success, msg = ExtensionSetup().open_chrome_extensions()
+        self._set_extension_status(success, msg)
+
+    def _open_edge_ext(self):
+        from utils.extension_setup import ExtensionSetup
+        success, msg = ExtensionSetup().open_edge_extensions()
+        self._set_extension_status(success, msg)
+
+    def _open_ext_folder(self):
+        from utils.extension_setup import ExtensionSetup
+        success, msg = ExtensionSetup().open_extension_folder()
+        self._set_extension_status(success, msg)
+
+    def _launch_browser_ext(self, browser):
+        from utils.extension_setup import ExtensionSetup
+        success, msg = ExtensionSetup().launch_with_extension(
+            browser=browser,
+            progress_callback=self._set_extension_progress,
+        )
+        self._set_extension_status(success, msg)
 
     # ========== .env 配置持久化 ==========
 
